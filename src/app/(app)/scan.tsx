@@ -4,7 +4,7 @@ import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -17,13 +17,18 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { analyzeIngredients, type SafetyReport, type Verdict } from '@/engine/foodSafety';
 import { useAuth } from '@/lib/auth';
+import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
+import { usePoints } from '@/lib/points';
 import { lookupBarcode, type Product } from '@/lib/openFoodFacts';
+import { amazonSearch } from '@/lib/shop';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
 type Mode = 'scan' | 'type';
+
+const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'codabar'] as const;
 
 /**
  * The viewfinder is the whole screen. A scan line sweeps the frame; the moment a
@@ -36,6 +41,7 @@ export default function Scan() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { dog } = useDogs();
+  const { award } = usePoints();
   const [permission, requestPermission] = useCameraPermissions();
 
   const [mode, setMode] = useState<Mode>('scan');
@@ -45,45 +51,85 @@ export default function Scan() {
   const [notFound, setNotFound] = useState<string | null>(null);
   const [typed, setTyped] = useState('');
   const [typedName, setTypedName] = useState('');
+  const [barcodeDigits, setBarcodeDigits] = useState('');
   const [saved, setSaved] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
   const lastCode = useRef<string | null>(null);
   const locked = useRef(false);
 
-  const onScan = async ({ data }: BarcodeScanningResult) => {
-    if (locked.current || !data || data === lastCode.current) return;
+  const lookupCode = async (raw: string) => {
+    const code = raw.replace(/\s/g, '');
+    if (locked.current || !code || code === lastCode.current) return;
     locked.current = true;
-    lastCode.current = data;
+    lastCode.current = code;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setBusy(true);
     setNotFound(null);
     try {
-      const p = await lookupBarcode(data);
+      await CameraView.dismissScanner();
+      const p = await lookupBarcode(code);
       if (!p) {
-        setNotFound(data);
+        setNotFound(code);
         locked.current = false;
+        lastCode.current = null;
         return;
       }
       setProduct(p);
       setReport(analyzeIngredients({ ingredientsText: p.ingredientsText, weightKg: dog?.weight_kg, kcalPer100g: p.kcalPer100g, allergies: dog?.allergies ?? [] }));
       setSaved(false);
+    } catch {
+      setNotFound(code);
+      locked.current = false;
+      lastCode.current = null;
     } finally {
       setBusy(false);
     }
   };
 
+  const onScan = ({ data }: BarcodeScanningResult) => {
+    void lookupCode(data);
+  };
+
+  useEffect(() => {
+    const sub = CameraView.onModernBarcodeScanned((event) => {
+      void lookupCode(event.data);
+    });
+    return () => {
+      sub.remove();
+    };
+  }, [dog?.id]);
+
+  const openSystemScanner = async () => {
+    try {
+      await CameraView.launchScanner({ barcodeTypes: [...BARCODE_TYPES] });
+    } catch {
+      // Overlay camera remains the fallback.
+    }
+  };
+
   const analyzeTyped = () => {
     if (!typed.trim()) return;
+    Keyboard.dismiss();
     setProduct({ barcode: '', name: typedName.trim() || 'Typed ingredients', brand: null, ingredientsText: typed, kcalPer100g: null, image: null });
     setReport(analyzeIngredients({ ingredientsText: typed, weightKg: dog?.weight_kg, allergies: dog?.allergies ?? [] }));
     setSaved(false);
   };
 
   const clear = () => {
+    Keyboard.dismiss();
     setProduct(null);
     setReport(null);
     setNotFound(null);
+    setSaved(false);
+    setBarcodeDigits('');
     locked.current = false;
     lastCode.current = null;
+  };
+
+  const goScan = () => {
+    clear();
+    setMode('scan');
+    setCameraKey((k) => k + 1);
   };
 
   const save = async () => {
@@ -97,6 +143,7 @@ export default function Scan() {
       verdict: report.verdict,
       flagged: report.flags.map((f) => ({ id: f.id, label: f.label, level: f.level })),
     });
+    await award({ kind: 'scan', key: `scan:${dog.id}:${product.barcode || product.name}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
     setSaved(true);
   };
 
@@ -105,16 +152,35 @@ export default function Scan() {
       {mode === 'scan' && permission?.granted ? <StatusBar style="light" /> : null}
       {mode === 'scan' && permission?.granted ? (
         <CameraView
+          key={cameraKey}
           style={StyleSheet.absoluteFill}
           facing="back"
-          barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'qr'] }}
-          onBarcodeScanned={product || busy ? undefined : onScan}
+          barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+          onBarcodeScanned={onScan}
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: t.bg }]} />
       )}
 
-      {mode === 'scan' && permission?.granted && !product ? <Viewfinder busy={busy} /> : null}
+      {mode === 'scan' && permission?.granted && !product ? (
+        <>
+          <Viewfinder busy={busy} />
+          <View style={[styles.manual, { paddingBottom: insets.bottom + space.md }]} pointerEvents="box-none">
+            <Button label="Open barcode scanner" icon="scan" onPress={() => void openSystemScanner()} />
+            <Surface kind="raised" style={{ gap: space.sm }}>
+              <Field
+                label="Or type the barcode"
+                placeholder="e.g. 012345678905"
+                value={barcodeDigits}
+                onChangeText={setBarcodeDigits}
+                keyboardType="number-pad"
+                onSubmitEditing={() => void lookupCode(barcodeDigits)}
+              />
+              <Button label="Look up this code" kind="secondary" onPress={() => void lookupCode(barcodeDigits)} disabled={!barcodeDigits.trim() || busy} />
+            </Surface>
+          </View>
+        </>
+      ) : null}
 
       <View style={[styles.top, { paddingTop: insets.top + space.sm }]} pointerEvents="box-none">
         <Tap onPress={() => router.back()} haptic="selection" accessibilityLabel="Close">
@@ -123,8 +189,8 @@ export default function Scan() {
           </Glass>
         </Tap>
         <Glass borderRadius={radius.pill} style={styles.segment}>
-          <Seg label="Scan" icon="scan" on={mode === 'scan'} onPress={() => setMode('scan')} />
-          <Seg label="Type it" icon="edit" on={mode === 'type'} onPress={() => setMode('type')} />
+          <Seg label="Scan" icon="scan" on={mode === 'scan' && !product} onPress={goScan} />
+          <Seg label="Type it" icon="edit" on={mode === 'type' && !product} onPress={() => { Keyboard.dismiss(); setMode('type'); clear(); }} />
         </Glass>
         <View style={{ width: 44 }} />
       </View>
@@ -178,14 +244,14 @@ export default function Scan() {
             </Text>
             <View style={styles.row}>
               <Button label="Type ingredients" icon="edit" onPress={() => setMode('type')} style={{ flex: 1 }} />
-              <Button label="Rescan" kind="secondary" onPress={clear} />
+              <Button label="Rescan" kind="secondary" onPress={goScan} />
             </View>
           </Surface>
         </Animated.View>
       ) : null}
 
       {product && report ? (
-        <Animated.View entering={FadeInUp.springify().damping(17)} style={[styles.sheet, { paddingBottom: insets.bottom + space.md, maxHeight: '82%' }]}>
+        <Animated.View entering={FadeInUp.duration(260)} style={[styles.sheet, { paddingBottom: insets.bottom + space.md, maxHeight: '82%' }]}>
           <Surface kind="raised" radiusSize="xl" padding={0} style={{ overflow: 'hidden' }}>
             <ScrollView contentContainerStyle={{ padding: space.lg, gap: space.lg }} showsVerticalScrollIndicator={false}>
               <VerdictBanner report={report} dogName={dog?.name} />
@@ -260,9 +326,20 @@ export default function Scan() {
                 </View>
               ) : null}
 
+              <Button
+                label={report.verdict === 'danger' || report.verdict === 'caution' ? 'Shop a safer option' : 'Buy this on Amazon'}
+                icon="link"
+                kind="ghost"
+                onPress={() =>
+                  Linking.openURL(
+                    amazonSearch(report.verdict === 'danger' || report.verdict === 'caution' ? 'dog treats no xylitol no grapes' : product.name || product.brand || 'dog treats'),
+                  )
+                }
+              />
+
               <View style={styles.row}>
-                <Button label={saved ? 'Saved' : 'Save scan'} icon={saved ? 'check' : 'plus'} kind={saved ? 'secondary' : 'primary'} disabled={saved} onPress={save} style={{ flex: 1 }} />
-                <Button label="Scan another" kind="secondary" icon="scan" onPress={clear} />
+                <Button label={saved ? 'Saved' : `Save scan  +${REWARDS.scan.points}`} icon={saved ? 'check' : 'plus'} kind={saved ? 'secondary' : 'primary'} disabled={saved} onPress={save} style={{ flex: 1 }} />
+                <Button label="Scan another" kind="secondary" icon="scan" onPress={goScan} />
               </View>
             </ScrollView>
           </Surface>
@@ -359,7 +436,8 @@ const styles = StyleSheet.create({
   bl: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 18 },
   br: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 18 },
   scanLine: { position: 'absolute', left: 16, right: 16, height: 2, borderRadius: 1, opacity: 0.9 },
-  hint: { position: 'absolute', bottom: '22%', paddingHorizontal: space.lg, height: 36, justifyContent: 'center' },
+  hint: { position: 'absolute', bottom: '32%', paddingHorizontal: space.lg, height: 36, justifyContent: 'center' },
+  manual: { position: 'absolute', left: space.md, right: space.md, bottom: 0, gap: space.sm, zIndex: 2 },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   thumb: { width: 56, height: 56, borderRadius: radius.md },

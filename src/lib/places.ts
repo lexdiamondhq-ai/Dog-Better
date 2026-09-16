@@ -135,19 +135,32 @@ export async function fetchNearbyDbPlaces(lat: number, lng: number, radiusM = 80
   return data ?? [];
 }
 
-export type PulseSummary = { crowd: string; ground: string; shade: boolean; at: string; count: number };
+export type PulseConfidence = 'low' | 'medium' | 'high';
+export type PulseSummary = { crowd: string; ground: string; shade: boolean; at: string; count: number; confidence: PulseConfidence };
 
-/** Latest pulse per place within the last 12 hours (anything older is stale for crowd levels). */
-export async function fetchPulseSummaries(placeIds: string[]): Promise<Record<string, PulseSummary>> {
+/**
+ * Latest pulse per place within the last 12 hours. Crowd data is thin by nature, so every summary
+ * carries a confidence level derived from how many people reported and how recently, and the UI
+ * always shows the timestamp next to it. One report from five hours ago is a hint, not a fact.
+ */
+export async function fetchPulseSummaries(placeIds: string[], now = Date.now()): Promise<Record<string, PulseSummary>> {
   if (placeIds.length === 0) return {};
-  const since = new Date(Date.now() - 12 * 3600_000).toISOString();
+  const since = new Date(now - 12 * 3600_000).toISOString();
   const { data } = await supabase.from('place_pulses').select('*').in('place_id', placeIds).gte('created_at', since).order('created_at', { ascending: false });
   const out: Record<string, PulseSummary> = {};
   for (const p of (data ?? []) as PlacePulse[]) {
-    if (!out[p.place_id]) out[p.place_id] = { crowd: p.crowd, ground: p.ground, shade: p.shade, at: p.created_at, count: 1 };
+    if (!out[p.place_id]) out[p.place_id] = { crowd: p.crowd, ground: p.ground, shade: p.shade, at: p.created_at, count: 1, confidence: 'low' };
     else out[p.place_id].count += 1;
   }
+  for (const s of Object.values(out)) s.confidence = pulseConfidence(s.count, now - new Date(s.at).getTime());
   return out;
+}
+
+export function pulseConfidence(reports: number, ageMs: number): PulseConfidence {
+  const hours = ageMs / 3600_000;
+  if (reports >= 3 && hours <= 2) return 'high';
+  if (reports >= 2 || hours <= 1) return 'medium';
+  return 'low';
 }
 
 export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: number) {

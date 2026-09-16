@@ -30,8 +30,8 @@ export function Button({ label, onPress, kind = 'primary', size = 'md', icon, lo
     primary: t.onBrand,
     secondary: t.text,
     ghost: t.brand,
-    danger: '#FFF6F1',
-    accent: t.scheme === 'dark' ? t.onBrand : '#3A2A10',
+    danger: t.onMeaning,
+    accent: t.onAccent,
   }[kind];
 
   const height = size === 'lg' ? 58 : 48;

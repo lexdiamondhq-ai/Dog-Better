@@ -10,7 +10,9 @@ import { Icon } from '@/components/ui/Icon';
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Text } from '@/components/ui/Text';
+import { REWARDS } from '@/engine/rewards';
 import { useAuth } from '@/lib/auth';
+import { usePoints } from '@/lib/points';
 import { KIND_META, type PlaceKind } from '@/lib/places';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -22,6 +24,7 @@ export default function NewPlace() {
   const t = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { award } = usePoints();
   const params = useLocalSearchParams<{ lat: string; lng: string }>();
   const lat = Number(params.lat);
   const lng = Number(params.lng);
@@ -44,12 +47,13 @@ export default function NewPlace() {
       setError(err?.message ?? 'Could not save');
       return;
     }
+    await award({ kind: 'place', key: `place:${data.id}` });
     router.replace({ pathname: '/(app)/place/[id]', params: { id: data.id } });
   };
 
   return (
     <Screen keyboardShouldPersistTaps="handled">
-      <ScreenHeader eyebrow="Places" title="Add a spot" subtitle="Share a dog-friendly place the map does not know about yet." onBack={() => router.back()} />
+      <ScreenHeader title="Add a spot" subtitle="Share a dog-friendly place." onBack={() => router.back()} />
 
       <View style={[styles.map, { borderColor: t.border }]}>
         <MapView
@@ -80,7 +84,7 @@ export default function NewPlace() {
             ))}
           </View>
         </View>
-        <Button label="Add to the map" icon="pin" onPress={save} loading={saving} size="lg" />
+        <Button label={`Add to the map  +${REWARDS.place.points}`} icon="pin" onPress={save} loading={saving} size="lg" />
       </Surface>
     </Screen>
   );

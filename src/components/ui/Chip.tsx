@@ -18,7 +18,7 @@ export function Chip({ label, selected, onPress, icon, tone = 'neutral' }: Props
   const t = useTheme();
   const toneColor = { neutral: t.brand, good: t.good, warn: t.warn, bad: t.bad }[tone];
   const bg = selected ? toneColor : t.surface;
-  const fg = selected ? (tone === 'neutral' ? t.onBrand : '#FFFDF8') : t.text;
+  const fg = selected ? (tone === 'neutral' ? t.onBrand : t.onMeaning) : t.text;
 
   const inner = (
     <View style={[styles.chip, { backgroundColor: bg, borderColor: selected ? toneColor : t.border }]}>

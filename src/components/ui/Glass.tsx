@@ -14,8 +14,7 @@ type Props = ViewProps & {
 const liquid = Platform.OS === 'ios' && isLiquidGlassAvailable();
 
 /**
- * Real Liquid Glass on iOS 26+, a tinted blur elsewhere. Used for the Paw Rail,
- * the Quick Actions tray, and floating controls over the map and camera.
+ * Real Liquid Glass on iOS 26+, a tinted blur elsewhere. Only over a photo, map, or camera.
  */
 export function Glass({ children, style, intensity = 40, borderRadius = 0, interactive, ...rest }: Props) {
   const t = useTheme();

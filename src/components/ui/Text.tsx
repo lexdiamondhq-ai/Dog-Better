@@ -12,6 +12,7 @@ export type TextVariant =
   | 'bodyStrong'
   | 'label'
   | 'caption'
+  | 'micro'
   | 'overline';
 
 export type TextTone = 'primary' | 'secondary' | 'tertiary' | 'brand' | 'onBrand' | 'good' | 'bad' | 'warn' | 'accent';
@@ -48,5 +49,6 @@ const styles = StyleSheet.create({
   bodyStrong: { fontFamily: fonts.bodyBold, fontSize: 15, lineHeight: 21 },
   label: { fontFamily: fonts.bodySemi, fontSize: 13, lineHeight: 17 },
   caption: { fontFamily: fonts.body, fontSize: 12, lineHeight: 16 },
+  micro: { fontFamily: fonts.bodySemi, fontSize: 10, lineHeight: 12 },
   overline: { fontFamily: fonts.bodyHeavy, fontSize: 11, lineHeight: 14, letterSpacing: 1.1, textTransform: 'uppercase' },
 });

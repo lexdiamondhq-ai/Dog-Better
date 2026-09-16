@@ -11,6 +11,7 @@
     "ios": {
       "bundleIdentifier": "com.dogbetter.app",
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
@@ -25,7 +26,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["android.permission.RECORD_AUDIO", "android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"]
+      "permissions": ["android.permission.CAMERA", "android.permission.ACCESS_FINE_LOCATION", "android.permission.ACCESS_COARSE_LOCATION"]
     },
     "web": {
       "output": "static",
@@ -42,15 +43,13 @@
           "dark": { "backgroundColor": "#171210" }
         }
       ],
-      [
-        "expo-audio",
-        { "microphonePermission": "Dog Better listens to your dog's barks for a few seconds to estimate their mood. Audio is analysed on your phone and never uploaded." }
-      ],
+      "expo-apple-authentication",
+      ["expo-sensors", { "motionPermission": "Dog Better counts your steps during walks so you can see how much you and your dog moved together." }],
       [
         "expo-camera",
         {
-          "cameraPermission": "Dog Better uses the camera to scan treat barcodes and take photos for your dog's vault.",
-          "microphonePermission": "Dog Better uses the microphone to translate barks.",
+          "cameraPermission": "Dog Better uses the camera to scan treat barcodes, scan documents, and take photos and videos of symptoms for your dog's records.",
+          "microphonePermission": "Dog Better uses the microphone when you record a short video of a behaviour or symptom.",
           "recordAudioAndroid": true
         }
       ],
@@ -60,7 +59,7 @@
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Dog Better uses your location to find dog parks, trails, and patios nearby." }
+        { "locationWhenInUsePermission": "Dog Better uses your location to show the walk map, and to find nearby vets, dog parks, trails, and patios." }
       ],
       "./plugins/withSpaceSafePods.js"
     ],

@@ -1,7 +1,7 @@
 import { Fredoka_500Medium, Fredoka_600SemiBold, Fredoka_700Bold } from '@expo-google-fonts/fredoka';
 import { Manrope_400Regular, Manrope_500Medium, Manrope_600SemiBold, Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -10,6 +10,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { DogsProvider, useDogs } from '@/lib/dogs';
+import { EntitlementsProvider, useEntitlements } from '@/lib/entitlements';
+import { PointsProvider } from '@/lib/points';
+import { PreferencesProvider } from '@/lib/preferences';
+import { CirclesProvider } from '@/lib/circles';
+import { InboxProvider } from '@/lib/inbox';
+import { LevelUp } from '@/components/points/LevelUp';
+import { PointsToast } from '@/components/points/PointsToast';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
 
 SplashScreen.preventAutoHideAsync();
@@ -32,13 +39,25 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ThemeProvider>
-          <AuthProvider>
-            <DogsProvider>
-              <Gate />
-            </DogsProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <PreferencesProvider>
+          <ThemeProvider>
+            <AuthProvider>
+              <DogsProvider>
+                <EntitlementsProvider>
+                  <PointsProvider>
+                    <CirclesProvider>
+                      <InboxProvider>
+                        <Gate />
+                        <PointsToast />
+                        <LevelUp />
+                      </InboxProvider>
+                    </CirclesProvider>
+                  </PointsProvider>
+                </EntitlementsProvider>
+              </DogsProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </PreferencesProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
@@ -52,26 +71,36 @@ function Gate() {
   const t = useTheme();
   const { session, ready } = useAuth();
   const { dogs, loaded } = useDogs();
+  const ent = useEntitlements();
   const segments = useSegments();
+  const params = useGlobalSearchParams<{ mode?: string | string[] }>();
   const router = useRouter();
+  const addMode = (Array.isArray(params.mode) ? params.mode[0] : params.mode) === 'add';
 
-  const decided = ready && (!session || loaded);
+  const decided = ready && (!session || loaded) && ent.loaded;
 
   useEffect(() => {
     if (!decided) return;
     const root = segments[0];
     const inAuth = root === '(auth)';
     const inOnboarding = root === 'onboarding';
+    const inPaywall = root === 'paywall';
+    const addingAnother = inOnboarding && addMode;
 
     if (!session) {
       if (!inAuth) router.replace('/(auth)/welcome');
     } else if (dogs.length === 0) {
       if (!inOnboarding) router.replace('/onboarding');
-    } else if (inAuth || inOnboarding || root === undefined) {
+    } else if (addingAnother) {
+      // Household already has a dog and asked to add one. Stay on onboarding.
+    } else if (inOnboarding || (inAuth && !ent.paywallSeen)) {
+      // First dog just created: show the trial offer once, with Skip, before landing in the app.
+      router.replace(ent.paywallSeen ? '/(app)/(tabs)/today' : { pathname: '/paywall', params: { from: 'onboarding' } });
+    } else if (inAuth || (root === undefined && !inPaywall)) {
       router.replace('/(app)/(tabs)/today');
     }
     SplashScreen.hideAsync();
-  }, [decided, session, dogs.length, segments, router]);
+  }, [decided, session, dogs.length, segments, router, ent.paywallSeen, addMode]);
 
   return (
     <>
@@ -80,6 +109,7 @@ function Gate() {
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="(app)" />
+        <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
     </>
   );

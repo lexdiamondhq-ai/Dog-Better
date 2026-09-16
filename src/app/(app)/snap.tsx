@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
-import { StyleSheet, Switch, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +16,8 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
+import { usePoints } from '@/lib/points';
+import { REWARDS } from '@/engine/rewards';
 import { humanizeError } from '@/lib/errors';
 import { pickFromLibrary, uploadImage } from '@/lib/media';
 import { supabase } from '@/lib/supabase';
@@ -32,13 +34,13 @@ export default function Snap() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { dog } = useDogs();
+  const { award } = usePoints();
   const [permission, requestPermission] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
 
   const [facing, setFacing] = useState<'back' | 'front'>('back');
   const [uri, setUri] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
-  const [share, setShare] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,12 +55,9 @@ export default function Snap() {
     setError(null);
     try {
       const storage_path = await uploadImage({ bucket: 'vault', userId: user.id, folder: `dogs/${dog.id}`, uri });
-      const { error: err } = await supabase.from('dog_photos').insert({ dog_id: dog.id, owner_id: user.id, storage_path, caption: caption.trim() || null });
+      const { error: err } = await supabase.from('dog_photos').insert({ dog_id: dog.id, owner_id: user.id, storage_path, caption: caption.trim() || null, kind: 'snap' });
       if (err) throw err;
-      if (share) {
-        const image_path = await uploadImage({ bucket: 'media', userId: user.id, folder: 'posts', uri });
-        await supabase.from('posts').insert({ author_id: user.id, dog_id: dog.id, caption: caption.trim() || null, image_path });
-      }
+      await award({ kind: 'photo', key: `photo:${dog.id}:${storage_path}`, dogId: dog.id });
       router.back();
     } catch (e) {
       setError(humanizeError(e, 'Could not save this photo.'));
@@ -83,7 +82,7 @@ export default function Snap() {
             Camera access
           </Text>
           <Text variant="body" tone="secondary" align="center">
-            Dog Better needs the camera to take vault photos. Nothing is uploaded until you tap save.
+            Dog Better needs the camera to take photos of your dog. Nothing is uploaded until you tap save.
           </Text>
           <Button label="Allow camera" onPress={requestPermission} />
           <Button label="Choose from library instead" kind="ghost" onPress={async () => setUri(await pickFromLibrary([4, 5]))} />
@@ -129,21 +128,18 @@ export default function Snap() {
       ) : null}
 
       {uri ? (
-        <Animated.View entering={FadeInUp.springify().damping(18)} style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap} pointerEvents="box-none">
+        <Pressable onPress={Keyboard.dismiss} style={styles.sheetDismiss} />
+        <Animated.View entering={FadeInUp.duration(260)} style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
           <Surface kind="raised" radiusSize="xl" style={{ gap: space.lg }}>
-            <Field placeholder={`A note about this moment (optional)`} value={caption} onChangeText={setCaption} maxLength={200} error={error ?? undefined} />
-            <View style={styles.shareRow}>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text variant="bodyStrong">Also share with the pack</Text>
-                <Text variant="caption" tone="tertiary">
-                  Off by default. The vault copy stays private either way.
-                </Text>
-              </View>
-              <Switch value={share} onValueChange={setShare} trackColor={{ true: t.brand }} />
-            </View>
-            <Button label={share ? 'Save and share' : 'Save to vault'} icon={share ? 'send' : 'check'} onPress={save} loading={busy} size="lg" />
+            <Field placeholder="What is this? e.g. left front paw, redness between toes" value={caption} onChangeText={setCaption} maxLength={200} error={error ?? undefined} returnKeyType="done" />
+            <Text variant="caption" tone="tertiary">
+              Private to you. Photos of the same spot over time make patterns obvious to you and your vet.
+            </Text>
+            <Button label={`Save photo  +${REWARDS.photo.points}`} icon="check" onPress={save} loading={busy} size="lg" />
           </Surface>
         </Animated.View>
+        </KeyboardAvoidingView>
       ) : null}
     </View>
   );
@@ -157,6 +153,7 @@ const styles = StyleSheet.create({
   shutterRow: { position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.xxl },
   shutterOuter: { width: 82, height: 82, borderRadius: 41, borderWidth: 4, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
   shutterInner: { width: 66, height: 66, borderRadius: 33 },
-  sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.md },
-  shareRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  sheetWrap: { ...StyleSheet.absoluteFill, justifyContent: 'flex-end' },
+  sheetDismiss: { flex: 1 },
+  sheet: { paddingHorizontal: space.md },
 });

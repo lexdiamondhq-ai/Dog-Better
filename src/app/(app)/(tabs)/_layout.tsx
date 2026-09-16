@@ -1,46 +1,42 @@
-import { Tabs } from 'expo-router/js-tabs';
-import { useCallback, useMemo, useState } from 'react';
-import { View } from 'react-native';
-import { useSharedValue, withSpring } from 'react-native-reanimated';
+import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
-import { PawRail } from '@/components/nav/PawRail';
-import { QuickActionsTray } from '@/components/nav/QuickActionsTray';
-import { QuickActionsContext, type QuickActionsApi } from '@/components/nav/quick-actions-context';
 import { useTheme } from '@/theme/ThemeProvider';
-import { springs } from '@/theme/tokens';
+import { fonts } from '@/theme/tokens';
 
+/**
+ * The system tab bar, not a custom one. On iOS 26 that means Liquid Glass pinned to the bottom edge
+ * that minimises as you scroll; on older iOS a translucent bar; on Android Material 3. Five tabs is
+ * the platform maximum before iOS inserts "More", so Care team lives one tap inside Profile.
+ */
 export default function TabsLayout() {
   const t = useTheme();
-  const progress = useSharedValue(0);
-  const [isOpen, setIsOpen] = useState(false);
-
-  const open = useCallback(() => {
-    progress.set(withSpring(1, springs.soft));
-    setIsOpen(true);
-  }, [progress]);
-  const close = useCallback(() => {
-    progress.set(withSpring(0, springs.soft));
-    setIsOpen(false);
-  }, [progress]);
-  const settle = useCallback((next: boolean) => setIsOpen(next), []);
-
-  const api = useMemo<QuickActionsApi>(() => ({ progress, isOpen, open, close, settle }), [progress, isOpen, open, close, settle]);
-
   return (
-    <QuickActionsContext.Provider value={api}>
-      <View style={{ flex: 1, backgroundColor: t.bg }}>
-        {/* No scene transition on purpose: Liquid Glass views that mount while an ancestor is fading in never attach their effect. */}
-        <Tabs
-          tabBar={(props) => <PawRail {...props} />}
-          screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: t.bg }, animation: 'none', lazy: true }}>
-          <Tabs.Screen name="today" />
-          <Tabs.Screen name="care" />
-          <Tabs.Screen name="places" />
-          <Tabs.Screen name="pack" />
-          <Tabs.Screen name="vault" />
-        </Tabs>
-        <QuickActionsTray />
-      </View>
-    </QuickActionsContext.Provider>
+    <NativeTabs
+      tintColor={t.brand}
+      iconColor={t.textTertiary}
+      labelStyle={{ fontFamily: fonts.bodySemi, fontSize: 11, color: t.textTertiary }}
+      minimizeBehavior="onScrollDown"
+      disableTransparentOnScrollEdge={false}>
+      <NativeTabs.Trigger name="today">
+        <NativeTabs.Trigger.Icon sf={{ default: 'sun.horizon', selected: 'sun.horizon.fill' }} drawable="ic_today" />
+        <NativeTabs.Trigger.Label>Today</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="track">
+        <NativeTabs.Trigger.Icon sf={{ default: 'square.and.pencil', selected: 'square.and.pencil' }} drawable="ic_track" />
+        <NativeTabs.Trigger.Label>Track</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="community">
+        <NativeTabs.Trigger.Icon sf={{ default: 'person.3', selected: 'person.3.fill' }} drawable="ic_community" />
+        <NativeTabs.Trigger.Label>Community</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="learn">
+        <NativeTabs.Trigger.Icon sf={{ default: 'book', selected: 'book.fill' }} drawable="ic_learn" />
+        <NativeTabs.Trigger.Label>Learn</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="profile">
+        <NativeTabs.Trigger.Icon sf={{ default: 'pawprint', selected: 'pawprint.fill' }} drawable="ic_profile" />
+        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+    </NativeTabs>
   );
 }

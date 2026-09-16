@@ -17,10 +17,10 @@ import { humanizeError } from '@/lib/errors';
 import { fetchNearbyDbPlaces, fetchOsmPlaces, fetchPulseSummaries, formatDistance, haversineKm, KIND_META, syncPlaces, type PlaceKind, type PulseSummary } from '@/lib/places';
 import { relativeTime } from '@/lib/activity';
 import { useTheme } from '@/theme/ThemeProvider';
-import { CONTENT_INSET_END, radius, space } from '@/theme/tokens';
+import { radius, space } from '@/theme/tokens';
 
 const FALLBACK: Region = { latitude: 43.6532, longitude: -79.3832, latitudeDelta: 0.06, longitudeDelta: 0.06 };
-const CARD_W = Math.min(300, Dimensions.get('window').width - CONTENT_INSET_END - space.xl);
+const CARD_W = Math.min(300, Dimensions.get('window').width - space.xl * 2);
 const CARD_STRIP_H = 120;
 const KIND_ICON: Record<PlaceKind, IconName> = { dog_park: 'park', trail: 'walk', patio: 'meal', beach: 'sun', other: 'park' };
 const FILTERS: (PlaceKind | 'all')[] = ['all', 'dog_park', 'trail', 'patio'];
@@ -151,11 +151,16 @@ export default function Places() {
       {/* No layout animations on these wrappers: Liquid Glass stops rendering while an ancestor animates opacity or transform. */}
       <View style={[styles.top, { paddingTop: insets.top + space.sm }]} pointerEvents="box-none">
         <Glass borderRadius={radius.lg} intensity={60} style={styles.topBar}>
-          <View style={{ gap: 2 }}>
-            <Text variant="overline" tone="tertiary">
-              Places
-            </Text>
-            <Text variant="title">Safe spaces near you</Text>
+          <View style={styles.topHead}>
+            <Tap onPress={() => router.back()} haptic="selection" style={[styles.back, { backgroundColor: t.surface }]} accessibilityLabel="Back">
+              <Icon name="back" size={18} />
+            </Tap>
+            <View style={{ gap: 2, flex: 1 }}>
+              <Text variant="overline" tone="tertiary">
+                Dog Better map
+              </Text>
+              <Text variant="title">Safe spaces near you</Text>
+            </View>
           </View>
           <View style={styles.filters}>
             {FILTERS.map((f) => (
@@ -186,7 +191,7 @@ export default function Places() {
 
       <View style={[styles.bottom, { paddingBottom: insets.bottom + space.md }]} pointerEvents="box-none">
         {error && !loading ? (
-          <View style={{ paddingHorizontal: space.lg, paddingRight: CONTENT_INSET_END }}>
+          <View style={{ paddingHorizontal: space.lg }}>
             <Glass borderRadius={radius.md} style={styles.notice}>
               <Icon name="info" size={16} color={t.textSecondary} />
               <Text variant="caption" tone="secondary" style={{ flex: 1 }}>
@@ -203,7 +208,7 @@ export default function Places() {
           showsHorizontalScrollIndicator={false}
           snapToInterval={CARD_W + space.sm}
           decelerationRate="fast"
-          contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm, paddingRight: CONTENT_INSET_END }}
+          contentContainerStyle={{ paddingHorizontal: space.lg, gap: space.sm }}
           getItemLayout={(_, i) => ({ length: CARD_W + space.sm, offset: (CARD_W + space.sm) * i, index: i })}
           onMomentumScrollEnd={(e) => {
             const i = Math.round(e.nativeEvent.contentOffset.x / (CARD_W + space.sm));
@@ -233,7 +238,8 @@ export default function Places() {
 
 function Pin({ kind, active, pulse }: { kind: PlaceKind; active: boolean; pulse?: PulseSummary }) {
   const t = useTheme();
-  const crowdColor = pulse ? { empty: t.good, light: t.good, busy: t.warn, packed: t.bad }[pulse.crowd] : null;
+  // Only colour the pin when at least two people agree or the report is fresh; one stale report stays neutral.
+  const crowdColor = pulse && pulse.confidence !== 'low' ? { empty: t.good, light: t.good, busy: t.warn, packed: t.bad }[pulse.crowd] : null;
   return (
     <View style={styles.pinWrap}>
       <View style={[styles.pin, { backgroundColor: active ? t.brand : t.bgRaised, borderColor: t.brand, transform: [{ scale: active ? 1.15 : 1 }] }]}>
@@ -272,13 +278,14 @@ function PlaceCard({ place, km, pulse, active, onPress }: { place: Place; km: nu
               <Tag label={{ empty: 'Empty', light: 'A few dogs', busy: 'Busy', packed: 'Packed' }[pulse.crowd] ?? pulse.crowd} tone={pulse.crowd === 'packed' ? 'bad' : pulse.crowd === 'busy' ? 'warn' : 'good'} />
               <Tag label={pulse.ground[0].toUpperCase() + pulse.ground.slice(1)} tone={pulse.ground === 'muddy' || pulse.ground === 'icy' ? 'warn' : 'neutral'} />
               {pulse.shade ? <Tag label="Shade" tone="neutral" /> : null}
-              <Text variant="caption" tone="tertiary" style={{ marginLeft: 'auto' }}>
-                {relativeTime(pulse.at)}
+              <Text variant="caption" tone="tertiary" style={{ marginLeft: 'auto' }} numberOfLines={1}>
+                {pulse.count} {pulse.count === 1 ? 'report' : 'reports'} - {relativeTime(pulse.at)}
+                {pulse.confidence === 'low' ? ' - unverified' : ''}
               </Text>
             </>
           ) : (
             <Text variant="caption" tone="tertiary">
-              No pulse yet today. Be the first.
+              No reports in the last 12 hours.
             </Text>
           )}
         </View>
@@ -304,6 +311,8 @@ const styles = StyleSheet.create({
   // The rail floats at mid-height, so the header can use the full width and keep the filters on one row.
   top: { position: 'absolute', left: 0, right: 0, paddingHorizontal: space.lg, gap: space.sm },
   topBar: { padding: space.lg, gap: space.md },
+  topHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   searchHere: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, height: 40 },
   bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, gap: space.sm },

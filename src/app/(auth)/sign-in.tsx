@@ -1,126 +1,176 @@
-import { Image } from 'expo-image';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import Animated, { FadeInDown, FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
 import { Screen, ScreenHeader } from '@/components/ui/Screen';
-import { Surface } from '@/components/ui/Surface';
+import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { humanizeError } from '@/lib/errors';
-import { supabase } from '@/lib/supabase';
+import { sendEmailCode, verifyEmailCode } from '@/lib/signIn';
 import { useTheme } from '@/theme/ThemeProvider';
-import { space } from '@/theme/tokens';
+import { fonts, radius, space } from '@/theme/tokens';
 
+const CODE_LENGTH = 6;
+const RESEND_SECONDS = 30;
+
+/**
+ * Passwordless email. Step one asks for the address, step two for the 6-digit code Supabase emails.
+ * The same flow signs up and signs in, so there is no "already have an account?" fork to get wrong.
+ */
 export default function SignIn() {
   const t = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string }>();
-  const [mode, setMode] = useState<'signin' | 'signup'>(params.mode === 'signin' ? 'signin' : 'signup');
-  const [name, setName] = useState('');
+  const [step, setStep] = useState<'email' | 'code'>('email');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [awaitingEmail, setAwaitingEmail] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const codeRef = useRef<TextInput>(null);
 
-  const submit = async () => {
-    setError(null);
-    if (!email.trim() || password.length < 8) {
-      setError('Use a valid email and a password with at least 8 characters.');
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
+
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  const send = async () => {
+    if (!valid) {
+      setError('That does not look like an email address.');
       return;
     }
     setBusy(true);
+    setError(null);
     try {
-      if (mode === 'signup') {
-        const { data, error: err } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { display_name: name.trim() || undefined } },
-        });
-        if (err) throw err;
-        if (!data.session) setAwaitingEmail(true);
-      } else {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (err) throw err;
-      }
+      await sendEmailCode(email.trim().toLowerCase());
+      setStep('code');
+      setCode('');
+      setCooldown(RESEND_SECONDS);
+      setTimeout(() => codeRef.current?.focus(), 350);
     } catch (e) {
-      setError(humanizeError(e, 'Something went wrong. Try again.'));
+      setError(humanizeError(e, 'Could not send the code. Try again.'));
     } finally {
       setBusy(false);
     }
   };
 
-  if (awaitingEmail) {
-    return (
-      <Screen>
-        <ScreenHeader title="Check your inbox" eyebrow="One more step" onBack={() => setAwaitingEmail(false)} />
-        <Surface kind="fur" style={{ alignItems: 'center', gap: space.md }}>
-          <Image source={require('@/assets/brand/mascot.png')} style={{ width: 160, height: 122 }} contentFit="contain" />
-          <Text variant="body" align="center">
-            We sent a confirmation link to <Text variant="bodyStrong">{email}</Text>. Tap it, then come back and sign in.
-          </Text>
-        </Surface>
-        <Button label="Back to sign in" kind="secondary" onPress={() => { setAwaitingEmail(false); setMode('signin'); }} />
-      </Screen>
-    );
-  }
+  const verify = async (value = code) => {
+    if (value.length !== CODE_LENGTH) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await verifyEmailCode(email.trim().toLowerCase(), value);
+      // The auth gate takes over from here and routes to onboarding or the app.
+    } catch (e) {
+      setError(humanizeError(e, 'That code did not work. Check it or request a new one.'));
+      setCode('');
+      codeRef.current?.focus();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen keyboardShouldPersistTaps="handled">
         <ScreenHeader
-          title={mode === 'signup' ? 'Create your account' : 'Welcome back'}
-          eyebrow="Dog Better"
-          subtitle={mode === 'signup' ? 'Your dog gets a profile, a vault, and a pack.' : 'Sign in to pick up where you left off.'}
-          onBack={() => router.back()}
+          title={step === 'email' ? 'What is your email?' : 'Enter the code'}
+          subtitle={step === 'email' ? 'We will send a 6-digit code. No password to remember.' : `Sent to ${email.trim()}. It expires in an hour.`}
+          onBack={() => (step === 'code' ? setStep('email') : router.back())}
         />
 
-        <Animated.View layout={Layout.springify()} style={styles.form}>
-          {mode === 'signup' ? (
-            <Animated.View entering={FadeInDown.duration(300)}>
-              <Field label="Your name" placeholder="How the pack should call you" value={name} onChangeText={setName} autoCapitalize="words" textContentType="name" />
-            </Animated.View>
-          ) : null}
-          <Field label="Email" placeholder="you@example.com" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" textContentType="emailAddress" autoComplete="email" />
-          <Field
-            label="Password"
-            placeholder="At least 8 characters"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            textContentType={mode === 'signup' ? 'newPassword' : 'password'}
-            error={error ?? undefined}
-            onSubmitEditing={submit}
-            returnKeyType="go"
-          />
-        </Animated.View>
-
-        <Button label={mode === 'signup' ? 'Create account' : 'Sign in'} size="lg" loading={busy} onPress={submit} />
-
-        <View style={styles.switchRow}>
-          <Text variant="body" tone="secondary">
-            {mode === 'signup' ? 'Already have an account?' : 'New here?'}
-          </Text>
-          <Button label={mode === 'signup' ? 'Sign in' : 'Create one'} kind="ghost" onPress={() => { setMode(mode === 'signup' ? 'signin' : 'signup'); setError(null); }} />
-        </View>
-
-        <View style={[styles.note, { backgroundColor: t.surface }]}>
-          <Icon name="shield" size={18} color={t.good} />
-          <Text variant="caption" tone="secondary" style={{ flex: 1 }}>
-            Your dog&apos;s records are private to you. Community posts are visible to other signed-in members.
-          </Text>
-        </View>
+        {step === 'email' ? (
+          <Animated.View key="email" entering={FadeInDown.duration(300)} exiting={FadeOutLeft} style={{ gap: space.lg }}>
+            <Field
+              label="Email"
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={(v) => {
+                setEmail(v);
+                setError(null);
+              }}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              autoComplete="email"
+              autoFocus
+              returnKeyType="send"
+              onSubmitEditing={send}
+              error={error ?? undefined}
+            />
+            <Button label="Send code" icon="send" size="lg" loading={busy} disabled={!valid} onPress={send} />
+            <View style={[styles.note, { backgroundColor: t.surface }]}>
+              <Icon name="shield" size={18} color={t.good} />
+              <Text variant="caption" tone="secondary" style={{ flex: 1 }}>
+                New here? The code creates your account. Already with us? It signs you in. Your dog&apos;s records are private to you.
+              </Text>
+            </View>
+          </Animated.View>
+        ) : (
+          <Animated.View key="code" entering={FadeInRight.duration(260)} style={{ gap: space.lg }}>
+            <CodeInput inputRef={codeRef} value={code} onChange={(v) => { setCode(v); setError(null); if (v.length === CODE_LENGTH) verify(v); }} error={!!error} />
+            {error ? (
+              <Text variant="caption" tone="bad" align="center">
+                {error}
+              </Text>
+            ) : null}
+            <Button label="Continue" icon="check" size="lg" loading={busy} disabled={code.length !== CODE_LENGTH} onPress={() => verify()} />
+            <Tap onPress={send} disabled={cooldown > 0 || busy} haptic="selection">
+              <Text variant="label" tone={cooldown > 0 ? 'tertiary' : 'brand'} align="center">
+                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send a new code'}
+              </Text>
+            </Tap>
+          </Animated.View>
+        )}
       </Screen>
     </KeyboardAvoidingView>
   );
 }
 
+type CodeProps = { value: string; onChange: (v: string) => void; error?: boolean; inputRef: RefObject<TextInput | null> };
+
+/** Six boxes drawn over one hidden input, so paste, autofill from Messages, and backspace all behave. */
+function CodeInput({ value, onChange, error, inputRef }: CodeProps) {
+  const t = useTheme();
+  const cells = Array.from({ length: CODE_LENGTH }, (_, i) => value[i] ?? '');
+  return (
+    <Pressable onPress={() => inputRef.current?.focus()} accessibilityLabel="Verification code">
+      <TextInput
+        ref={inputRef}
+        value={value}
+        onChangeText={(v) => onChange(v.replace(/\D/g, '').slice(0, CODE_LENGTH))}
+        keyboardType="number-pad"
+        textContentType="oneTimeCode"
+        autoComplete="one-time-code"
+        maxLength={CODE_LENGTH}
+        style={styles.hidden}
+        caretHidden
+        accessibilityLabel="Verification code"
+      />
+      <View style={styles.cells} pointerEvents="none">
+        {cells.map((c, i) => {
+          const active = i === Math.min(value.length, CODE_LENGTH - 1);
+          return (
+            <View key={i} style={[styles.cell, { backgroundColor: t.bgRaised, borderColor: error ? t.bad : active ? t.brand : t.border, borderWidth: active || error ? 2 : 1 }]}>
+              <Text style={[styles.digit, { color: t.text }]}>{c}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
-  form: { gap: space.lg },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs },
   note: { flexDirection: 'row', gap: space.md, alignItems: 'center', padding: space.lg, borderRadius: 20 },
+  hidden: { position: 'absolute', opacity: 0, height: 1, width: 1 },
+  cells: { flexDirection: 'row', gap: space.sm, justifyContent: 'center' },
+  cell: { width: 48, height: 60, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  digit: { fontFamily: fonts.display, fontSize: 28, lineHeight: 34 },
 });

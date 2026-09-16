@@ -13,7 +13,9 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { DURATIONS, runTriage, SYMPTOM_GROUPS, SYMPTOMS, type Duration, type SymptomId, type Triage, type TriageResult } from '@/engine/triage';
 import { useAuth } from '@/lib/auth';
+import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
+import { usePoints } from '@/lib/points';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -32,6 +34,7 @@ export default function Symptoms() {
   const router = useRouter();
   const { user } = useAuth();
   const { dog } = useDogs();
+  const { award } = usePoints();
 
   const [step, setStep] = useState<Step>('pick');
   const [picked, setPicked] = useState<SymptomId[]>([]);
@@ -41,12 +44,13 @@ export default function Symptoms() {
   const [result, setResult] = useState<TriageResult | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [unsure, setUnsure] = useState(false);
 
   const toggle = (id: SymptomId) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
 
   const evaluate = () => {
     const ageYears = dog?.birthdate ? (Date.now() - new Date(dog.birthdate).getTime()) / (365.25 * 24 * 3600_000) : null;
-    const r = runTriage({ symptoms: picked, severity, duration, ageYears });
+    const r = runTriage({ symptoms: picked, severity, duration, ageYears, unsure });
     setResult(r);
     setStep('result');
   };
@@ -57,13 +61,14 @@ export default function Symptoms() {
     await supabase.from('health_logs').insert({
       dog_id: dog.id,
       owner_id: user.id,
-      symptoms: picked,
+      symptoms: picked.length ? picked : ['not_sure'],
       severity,
       duration,
       triage: result.triage,
       guidance: result.guidance,
       notes: notes.trim() || null,
     });
+    await award({ kind: 'health', key: `health:${dog.id}:${Date.now()}`, dogId: dog.id });
     setSaving(false);
     setSaved(true);
   };
@@ -76,25 +81,56 @@ export default function Symptoms() {
     setNotes('');
     setResult(null);
     setSaved(false);
+    setUnsure(false);
   };
+
+  const canContinue = picked.length > 0 || unsure;
 
   return (
     <Screen
       keyboardShouldPersistTaps="handled"
       footer={
         step === 'pick' ? (
-          <Button label={picked.length ? `Continue with ${picked.length} ${picked.length === 1 ? 'sign' : 'signs'}` : 'Pick at least one sign'} disabled={!picked.length} onPress={() => setStep('detail')} size="lg" icon="chevron" />
+          <Button
+            label={picked.length ? `Continue with ${picked.length} ${picked.length === 1 ? 'sign' : 'signs'}` : unsure ? 'Continue' : 'Pick a sign, or say you are not sure'}
+            disabled={!canContinue}
+            onPress={() => setStep('detail')}
+            size="lg"
+            icon="chevron"
+          />
         ) : undefined
       }>
       <ScreenHeader
-        eyebrow={step === 'result' ? 'Symptom checker' : `Symptom checker${step === 'detail' ? ' - 2 of 2' : ' - 1 of 2'}`}
+        eyebrow={step === 'result' ? 'Detective' : `Detective${step === 'detail' ? ' - 2 of 2' : ' - 1 of 2'}`}
         title={step === 'pick' ? `What's going on with ${dog?.name ?? 'your dog'}?` : step === 'detail' ? 'How bad, and since when?' : 'Here is what we think'}
         onBack={step === 'pick' ? () => router.back() : step === 'detail' ? () => setStep('pick') : () => setStep('detail')}
         large={step !== 'result'}
       />
 
       {step === 'pick' ? (
-        <Animated.View key="pick" entering={FadeInRight.springify().damping(18)} exiting={FadeOutLeft} style={{ gap: space.lg }}>
+        <Animated.View key="pick" entering={FadeInRight.duration(260)} exiting={FadeOutLeft} style={{ gap: space.lg }}>
+          <View style={[styles.disclaimer, { backgroundColor: t.surface }]}>
+            <Icon name="info" size={16} color={t.textSecondary} />
+            <Text variant="caption" tone="secondary" style={{ flex: 1 }}>
+              This sorts urgency and keeps a record for your vet. It does not diagnose. If {dog?.name ?? 'your dog'} seems in distress, skip this and call.
+            </Text>
+          </View>
+
+          <Tap onPress={() => setUnsure((v) => !v)} haptic="selection">
+            <Surface kind={unsure ? 'brand' : 'outline'} style={styles.unsure}>
+              <Icon name="detective" size={20} color={unsure ? t.onBrand : t.brand} />
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyStrong" style={unsure ? { color: t.onBrand } : undefined}>
+                  Something is off but I cannot name it
+                </Text>
+                <Text variant="caption" style={{ color: unsure ? t.onBrand : t.textSecondary, opacity: unsure ? 0.85 : 1 }}>
+                  We will help you document it and set a watch window.
+                </Text>
+              </View>
+              <Icon name={unsure ? 'check' : 'chevron'} size={16} color={unsure ? t.onBrand : t.textTertiary} />
+            </Surface>
+          </Tap>
+
           {SYMPTOM_GROUPS.map((group) => (
             <Section key={group} title={group}>
               <View style={styles.chips}>
@@ -108,7 +144,7 @@ export default function Symptoms() {
       ) : null}
 
       {step === 'detail' ? (
-        <Animated.View key="detail" entering={FadeInRight.springify().damping(18)} exiting={FadeOutLeft} style={{ gap: space.lg }}>
+        <Animated.View key="detail" entering={FadeInRight.duration(260)} exiting={FadeOutLeft} style={{ gap: space.lg }}>
           <Surface kind="raised" style={{ gap: space.md }}>
             <View style={styles.rowBetween}>
               <Text variant="label" tone="secondary">
@@ -149,12 +185,12 @@ export default function Symptoms() {
       ) : null}
 
       {step === 'result' && result ? (
-        <Animated.View key="result" entering={FadeInUp.springify().damping(16)} style={{ gap: space.lg }}>
+        <Animated.View key="result" entering={FadeInUp.duration(260)} style={{ gap: space.lg }}>
           <Verdict result={result} vetPhone={dog?.vet_phone ?? null} />
 
           {result.reasons.length ? (
             <Section title="Why">
-              <Surface kind="raised" padding={0} style={{ overflow: 'hidden' }}>
+              <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
                 {result.reasons.map((r, i) => (
                   <View key={r} style={[styles.reason, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }]}>
                     <Icon name="chevron" size={14} color={t.textTertiary} />
@@ -185,7 +221,7 @@ export default function Symptoms() {
           ) : null}
 
           <View style={{ gap: space.sm }}>
-            <Button label={saved ? 'Logged to health record' : 'Log this to the health record'} icon={saved ? 'check' : 'plus'} onPress={save} loading={saving} disabled={saved} kind={saved ? 'secondary' : 'primary'} />
+            <Button label={saved ? 'Logged to health record' : `Log this  +${REWARDS.health.points}`} icon={saved ? 'check' : 'plus'} onPress={save} loading={saving} disabled={saved} kind={saved ? 'secondary' : 'primary'} />
             <Button label="Check something else" kind="ghost" onPress={reset} />
           </View>
           <Text variant="caption" tone="tertiary" align="center">
@@ -237,6 +273,8 @@ function Verdict({ result, vetPhone }: { result: TriageResult; vetPhone: string 
 
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
+  disclaimer: { flexDirection: 'row', alignItems: 'center', gap: space.sm, padding: space.md, borderRadius: radius.sm },
+  unsure: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   severity: { flexDirection: 'row', alignItems: 'flex-end', gap: space.xs },
   severityStep: { borderRadius: 6 },

@@ -4,23 +4,31 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
 type Props = ViewProps & {
-  /** raised = white-ish card with a warm shadow; tonal = oat fill, no shadow; outline = hairline only. */
-  kind?: 'raised' | 'tonal' | 'outline' | 'brand' | 'fur';
+  /**
+   * grouped = iOS inset list (no shadow). raised = rare lifted card.
+   * tonal / outline stay flat. brand / fur are meaning fills, not chrome.
+   */
+  kind?: 'grouped' | 'raised' | 'tonal' | 'outline' | 'brand' | 'fur';
   padding?: number;
   radiusSize?: keyof typeof radius;
 };
 
-export function Surface({ kind = 'raised', padding = space.lg, radiusSize = 'lg', style, ...rest }: Props) {
+export function Surface({ kind = 'grouped', padding = space.lg, radiusSize = 'lg', style, ...rest }: Props) {
   const t = useTheme();
   const base = {
+    grouped: {
+      backgroundColor: t.bgRaised,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: t.border,
+    },
     raised: {
       backgroundColor: t.bgRaised,
       shadowColor: t.shadow,
-      shadowOpacity: t.scheme === 'dark' ? 0.5 : 0.1,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 3,
-      borderWidth: t.scheme === 'dark' ? StyleSheet.hairlineWidth : 0,
+      shadowOpacity: t.scheme === 'dark' ? 0.35 : 0.06,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 2,
+      borderWidth: StyleSheet.hairlineWidth,
       borderColor: t.border,
     },
     tonal: { backgroundColor: t.surface },
@@ -30,4 +38,13 @@ export function Surface({ kind = 'raised', padding = space.lg, radiusSize = 'lg'
   }[kind];
 
   return <View {...rest} style={[base, { padding, borderRadius: radius[radiusSize] }, style]} />;
+}
+
+/** Records, settings, and timelines. Not a marshmallow. */
+export function GroupedList({ children, style, ...rest }: ViewProps) {
+  return (
+    <Surface kind="grouped" padding={0} style={[{ overflow: 'hidden' }, style]} {...rest}>
+      {children}
+    </Surface>
+  );
 }

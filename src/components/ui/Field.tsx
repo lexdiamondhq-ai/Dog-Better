@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
+import { Keyboard, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from './Text';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -27,6 +27,8 @@ export function Field({ label, hint, error, suffix, style, ...rest }: Props) {
       <View style={[styles.box, { backgroundColor: t.bgRaised, borderColor }]}>
         <TextInput
           {...rest}
+          blurOnSubmit={rest.blurOnSubmit ?? !rest.multiline}
+          returnKeyType={rest.returnKeyType ?? (rest.multiline ? 'default' : 'done')}
           onFocus={(e) => {
             setFocused(true);
             rest.onFocus?.(e);
@@ -34,6 +36,10 @@ export function Field({ label, hint, error, suffix, style, ...rest }: Props) {
           onBlur={(e) => {
             setFocused(false);
             rest.onBlur?.(e);
+          }}
+          onSubmitEditing={(e) => {
+            if (!rest.multiline) Keyboard.dismiss();
+            rest.onSubmitEditing?.(e);
           }}
           placeholderTextColor={t.textTertiary}
           selectionColor={t.brand}

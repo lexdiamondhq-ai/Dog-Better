@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { Href } from 'expo-router';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
 import { useAuth } from './auth';
@@ -23,6 +24,9 @@ const DogsContext = createContext<DogsState>({
 });
 
 const ACTIVE_KEY = 'dogbetter.activeDog';
+
+/** Query flag so the root gate does not bounce an already-onboarded household off this screen. */
+export const ADD_DOG_HREF = '/onboarding?mode=add' as Href;
 
 export function DogsProvider({ children }: PropsWithChildren) {
   const { user } = useAuth();

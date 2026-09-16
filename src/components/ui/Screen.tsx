@@ -7,11 +7,11 @@ import { Icon } from './Icon';
 import { Tap } from './Tap';
 import { Text } from './Text';
 import { useTheme } from '@/theme/ThemeProvider';
-import { CONTENT_INSET_END, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
 type Props = PropsWithChildren<{
-  /** Leave room on the trailing edge for the Paw Rail (true on top-level destinations). */
-  rail?: boolean;
+  /** True on tab destinations: content scrolls under the system tab bar, which reports itself through the bottom safe-area inset. */
+  dock?: boolean;
   scroll?: boolean;
   padded?: boolean;
   refreshing?: boolean;
@@ -21,11 +21,13 @@ type Props = PropsWithChildren<{
   scrollRef?: Ref<ScrollView>;
   /** Pinned below the scroll view, above the home indicator. For primary CTAs that must stay reachable. */
   footer?: ReactNode;
+  /** Let the first child paint under the status bar (Today portrait, camera, map). */
+  flushTop?: boolean;
 }>;
 
 export function Screen({
   children,
-  rail = false,
+  dock = false,
   scroll = true,
   padded = true,
   refreshing,
@@ -34,11 +36,13 @@ export function Screen({
   keyboardShouldPersistTaps,
   scrollRef,
   footer,
+  flushTop = false,
 }: Props) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const paddingRight = padded ? (rail ? CONTENT_INSET_END : space.xl) : 0;
+  const paddingRight = padded ? space.xl : 0;
   const paddingLeft = padded ? space.xl : 0;
+  const bottomInset = insets.bottom + (dock ? space.xl : space.xxxl);
 
   if (!scroll) {
     return (
@@ -52,12 +56,13 @@ export function Screen({
     <View style={[styles.fill, { backgroundColor: t.bg }]}>
       <ScrollView
         ref={scrollRef}
-        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps ?? 'handled'}
+        keyboardDismissMode="interactive"
         contentInsetAdjustmentBehavior="never"
         showsVerticalScrollIndicator={false}
         refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={t.brand} /> : undefined}
         contentContainerStyle={[
-          { paddingTop: insets.top + space.md, paddingBottom: footer ? space.lg : insets.bottom + space.xxxl, paddingLeft, paddingRight, gap: space.lg },
+          { paddingTop: flushTop ? 0 : insets.top + space.md, paddingBottom: footer ? space.lg : bottomInset, paddingLeft, paddingRight, gap: space.lg },
           contentContainerStyle,
         ]}>
         {children}
@@ -80,7 +85,7 @@ type HeaderProps = {
 export function ScreenHeader({ title, eyebrow, subtitle, onBack, trailing, large = true }: HeaderProps) {
   const t = useTheme();
   return (
-    <Animated.View entering={FadeInDown.duration(420).springify().damping(18)} style={styles.header}>
+    <Animated.View entering={FadeInDown.duration(260)} style={styles.header}>
       {onBack ? (
         <Tap onPress={onBack} haptic="selection" style={[styles.back, { backgroundColor: t.surface }]} accessibilityLabel="Back">
           <Icon name="back" size={18} />

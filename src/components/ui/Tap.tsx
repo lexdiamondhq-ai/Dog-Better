@@ -33,7 +33,7 @@ export function Tap({ children, style, scaleTo = 0.965, haptic = 'light', onPres
         onPressIn?.(e);
       }}
       onPressOut={(e) => {
-        scale.set(withSpring(1, springs.bouncy));
+        scale.set(withSpring(1, springs.snappy));
         onPressOut?.(e);
       }}
       onPress={(e) => {

@@ -94,6 +94,8 @@ export type TriageInput = {
   duration: Duration;
   /** Puppies (< 1 yr) and seniors (> 8 yrs) escalate faster. */
   ageYears?: number | null;
+  /** "Something is off but I cannot name it." Documents and sets a watch window instead of guessing. */
+  unsure?: boolean;
 };
 
 export type TriageResult = {
@@ -147,6 +149,12 @@ export function runTriage(input: TriageInput): TriageResult {
   if (vulnerable && at('amber') && input.severity >= 4) escalate('red', 'Puppies and seniors decline faster, so we bumped urgency.');
   if (vulnerable && at('green') && picked.length > 0 && d >= 2) escalate('amber', 'Puppies and seniors should be seen sooner.');
 
+  if (input.unsure) {
+    if (input.severity >= 4 || d >= 2) escalate('amber', 'You feel something is wrong and it is either marked or has lasted days. Owners notice before tests do; a call is the right move.');
+    else if (vulnerable) escalate('amber', 'With a puppy or senior, "not quite right" is worth a same-day call.');
+    else reasons.push('Nothing specific yet. The useful move is to document: a note, a photo or short video, and a re-check in 12 hours.');
+  }
+
   if (reasons.length === 0 && picked.length > 0) reasons.push('Mild, recent, and isolated: safe to monitor at home for now.');
 
   const copy: Record<Triage, { title: string; guidance: string }> = {
@@ -165,10 +173,13 @@ export function runTriage(input: TriageInput): TriageResult {
   };
 
   const triage = state.triage;
-  return {
-    triage,
-    ...copy[triage],
-    reasons,
-    tips: picked.filter((s) => !s.redFlag || triage !== 'red').map((s) => ({ label: s.label, homeTip: s.homeTip, watchFor: s.watchFor })),
-  };
+  const tips = picked.filter((s) => !s.redFlag || triage !== 'red').map((s) => ({ label: s.label, homeTip: s.homeTip, watchFor: s.watchFor }));
+  if (input.unsure && triage === 'green') {
+    tips.unshift({
+      label: 'Not sure what it is',
+      homeTip: 'Write down what you noticed and when. Take a 15-second video of the behaviour. Check again in 12 hours and log whether it is the same, better, or worse.',
+      watchFor: 'Not eating, not drinking, vomiting, laboured breathing, pale gums, collapse, or a swollen belly. Any of these means call now.',
+    });
+  }
+  return { triage, ...copy[triage], reasons, tips };
 }

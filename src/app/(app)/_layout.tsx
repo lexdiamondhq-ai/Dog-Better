@@ -3,8 +3,8 @@ import { Stack } from 'expo-router';
 import { useTheme } from '@/theme/ThemeProvider';
 
 /**
- * Feature screens push in from the trailing edge, the same edge the Paw Rail lives on,
- * so the spatial model stays consistent: everything new arrives from the right.
+ * Feature screens push in from the right. Emergency is the exception: it rises from the bottom
+ * as a modal, because it is a mode you enter, not a place you browse to.
  */
 export default function AppLayout() {
   const t = useTheme();
@@ -18,6 +18,7 @@ export default function AppLayout() {
         fullScreenGestureEnabled: true,
       }}>
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen name="emergency" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
     </Stack>
   );
 }

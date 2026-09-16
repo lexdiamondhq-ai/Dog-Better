@@ -11,10 +11,21 @@ const FIELDS = 'product_name,product_name_en,brands,ingredients_text,ingredients
 
 /** Open Food Facts is a free, open database of 3M+ packaged foods. No key needed. */
 export async function lookupBarcode(barcode: string): Promise<Product | null> {
-  const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(barcode)}.json?fields=${FIELDS}`, {
-    headers: { 'User-Agent': 'DogBetter/1.0 (mobile app)' },
-  });
-  if (!res.ok) return null;
+  const code = barcode.replace(/\s/g, '');
+  const urls = [
+    `https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`,
+    `https://us.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${FIELDS}`,
+  ];
+  let res: Response | null = null;
+  for (const url of urls) {
+    try {
+      res = await fetch(url, { headers: { 'User-Agent': 'DogBetter/1.0 (ios; treat-scanner)' } });
+      if (res.ok) break;
+    } catch {
+      res = null;
+    }
+  }
+  if (!res?.ok) return null;
   const json = (await res.json()) as {
     status: number;
     product?: {
@@ -31,7 +42,7 @@ export async function lookupBarcode(barcode: string): Promise<Product | null> {
   const p = json.product;
   const kcal = p.nutriments?.['energy-kcal_100g'] ?? p.nutriments?.['energy-kcal'] ?? null;
   return {
-    barcode,
+    barcode: code,
     name: p.product_name_en || p.product_name || null,
     brand: p.brands?.split(',')[0]?.trim() || null,
     ingredientsText: p.ingredients_text_en || p.ingredients_text || null,

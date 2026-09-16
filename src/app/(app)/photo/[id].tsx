@@ -1,17 +1,19 @@
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/ui/Button';
 import { Glass } from '@/components/ui/Glass';
 import { Icon } from '@/components/ui/Icon';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import type { DogPhoto } from '@/lib/database.types';
-import { signedVaultUrl } from '@/lib/media';
+import { extOf, isImagePath, signedVaultUrl } from '@/lib/media';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -33,7 +35,7 @@ export default function PhotoDetail() {
 
   const remove = () => {
     if (!photo) return;
-    Alert.alert('Delete this photo?', 'It will be removed from the vault for good.', [
+    Alert.alert('Delete this record?', 'It will be removed from the vault for good.', [
       { text: 'Keep', style: 'cancel' },
       {
         text: 'Delete',
@@ -47,12 +49,28 @@ export default function PhotoDetail() {
     ]);
   };
 
+  const image = photo ? isImagePath(photo.storage_path) : true;
+
   return (
-    <View style={{ flex: 1, backgroundColor: '#000' }}>
-      <StatusBar style="light" />
-      {photo ? (
+    <View style={{ flex: 1, backgroundColor: image ? '#000' : t.bg }}>
+      <StatusBar style={image ? 'light' : t.scheme === 'dark' ? 'light' : 'dark'} />
+      {photo && image ? (
         <Animated.View entering={FadeIn.duration(300)} style={StyleSheet.absoluteFill}>
           <Image source={{ uri: photo.url }} style={StyleSheet.absoluteFill} contentFit="contain" />
+        </Animated.View>
+      ) : null}
+      {photo && !image ? (
+        <Animated.View entering={FadeIn.duration(240)} style={[styles.fileBody, { paddingTop: insets.top + 72 }]}>
+          <View style={[styles.fileIcon, { backgroundColor: t.surface }]}>
+            <Icon name="document" size={36} color={t.brand} />
+          </View>
+          <Text variant="title" align="center">
+            {photo.caption ?? 'Visit file'}
+          </Text>
+          <Text variant="caption" tone="secondary" align="center">
+            {extOf(photo.storage_path).toUpperCase() || 'FILE'}
+          </Text>
+          <Button label="Open file" icon="share" onPress={() => void WebBrowser.openBrowserAsync(photo.url)} />
         </Animated.View>
       ) : null}
       <View style={[styles.top, { paddingTop: insets.top + space.sm }]}>
@@ -67,7 +85,7 @@ export default function PhotoDetail() {
           </Glass>
         </Tap>
       </View>
-      {photo?.caption ? (
+      {photo?.caption && image ? (
         <View style={[styles.captionWrap, { paddingBottom: insets.bottom + space.lg }]}>
           <Glass borderRadius={radius.lg} style={styles.caption}>
             <Text variant="body">{photo.caption}</Text>
@@ -86,4 +104,6 @@ const styles = StyleSheet.create({
   glassBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   captionWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.lg },
   caption: { padding: space.lg, gap: space.xs },
+  fileBody: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xl, gap: space.md },
+  fileIcon: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 });

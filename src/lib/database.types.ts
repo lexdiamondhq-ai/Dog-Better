@@ -8,45 +8,10 @@ export type Database = {
   };
   public: {
     Tables: {
-      bark_sessions: {
-        Row: {
-          confidence: number;
-          created_at: string;
-          dog_id: string;
-          duration_ms: number;
-          features: Json;
-          id: string;
-          mood: string;
-          owner_id: string;
-        };
-        Insert: {
-          confidence: number;
-          created_at?: string;
-          dog_id: string;
-          duration_ms: number;
-          features?: Json;
-          id?: string;
-          mood: string;
-          owner_id: string;
-        };
-        Update: {
-          confidence?: number;
-          created_at?: string;
-          dog_id?: string;
-          duration_ms?: number;
-          features?: Json;
-          id?: string;
-          mood?: string;
-          owner_id?: string;
-        };
-        Relationships: [
-          { foreignKeyName: 'bark_sessions_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
-        ];
-      };
       dog_photos: {
-        Row: { caption: string | null; created_at: string; dog_id: string; id: string; owner_id: string; storage_path: string };
-        Insert: { caption?: string | null; created_at?: string; dog_id: string; id?: string; owner_id: string; storage_path: string };
-        Update: { caption?: string | null; created_at?: string; dog_id?: string; id?: string; owner_id?: string; storage_path?: string };
+        Row: { caption: string | null; created_at: string; dog_id: string; id: string; kind: 'snap' | 'vet_visit'; owner_id: string; storage_path: string };
+        Insert: { caption?: string | null; created_at?: string; dog_id: string; id?: string; kind?: 'snap' | 'vet_visit'; owner_id: string; storage_path: string };
+        Update: { caption?: string | null; created_at?: string; dog_id?: string; id?: string; kind?: 'snap' | 'vet_visit'; owner_id?: string; storage_path?: string };
         Relationships: [
           { foreignKeyName: 'dog_photos_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
         ];
@@ -273,12 +238,32 @@ export type Database = {
           { foreignKeyName: 'post_likes_post_id_fkey'; columns: ['post_id']; isOneToOne: false; referencedRelation: 'posts'; referencedColumns: ['id'] },
         ];
       };
+      circles: {
+        Row: { created_at: string; id: string; invite_code: string; kind: 'nearby' | 'contacts' | 'custom'; name: string; owner_id: string };
+        Insert: { created_at?: string; id?: string; invite_code: string; kind: 'nearby' | 'contacts' | 'custom'; name: string; owner_id: string };
+        Update: { created_at?: string; id?: string; invite_code?: string; kind?: 'nearby' | 'contacts' | 'custom'; name?: string; owner_id?: string };
+        Relationships: [];
+      };
+      circle_members: {
+        Row: { circle_id: string; joined_at: string; user_id: string };
+        Insert: { circle_id: string; joined_at?: string; user_id: string };
+        Update: { circle_id?: string; joined_at?: string; user_id?: string };
+        Relationships: [{ foreignKeyName: 'circle_members_circle_id_fkey'; columns: ['circle_id']; isOneToOne: false; referencedRelation: 'circles'; referencedColumns: ['id'] }];
+      };
       posts: {
-        Row: { author_id: string; caption: string | null; created_at: string; dog_id: string | null; id: string; image_path: string | null };
-        Insert: { author_id: string; caption?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
-        Update: { author_id?: string; caption?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
+        Row: { author_id: string; caption: string | null; circle_id: string | null; created_at: string; dog_id: string | null; id: string; image_path: string | null };
+        Insert: { author_id: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
+        Update: { author_id?: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
         Relationships: [
           { foreignKeyName: 'posts_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
+        ];
+      };
+      walks: {
+        Row: { created_at: string; dog_id: string; ended_at: string; id: string; notes: string | null; owner_id: string; started_at: string; steps: number };
+        Insert: { created_at?: string; dog_id: string; ended_at: string; id?: string; notes?: string | null; owner_id: string; started_at: string; steps: number };
+        Update: { created_at?: string; dog_id?: string; ended_at?: string; id?: string; notes?: string | null; owner_id?: string; started_at?: string; steps?: number };
+        Relationships: [
+          { foreignKeyName: 'walks_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
         ];
       };
       profiles: {
@@ -297,7 +282,13 @@ export type Database = {
       };
     };
     Views: { [_ in never]: never };
-    Functions: { [_ in never]: never };
+    Functions: {
+      join_circle: { Args: { code: string }; Returns: string };
+      create_circle: {
+        Args: { p_name: string; p_kind?: 'nearby' | 'contacts' | 'custom' };
+        Returns: { created_at: string; id: string; invite_code: string; kind: 'nearby' | 'contacts' | 'custom'; name: string; owner_id: string };
+      };
+    };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };
   };
@@ -312,12 +303,14 @@ export type TablesUpdate<T extends keyof PublicSchema['Tables']> = PublicSchema[
 export type Dog = Tables<'dogs'>;
 export type Profile = Tables<'profiles'>;
 export type HealthLog = Tables<'health_logs'>;
-export type BarkSession = Tables<'bark_sessions'>;
 export type FoodScan = Tables<'food_scans'>;
 export type Meal = Tables<'meals'>;
 export type DogPhoto = Tables<'dog_photos'>;
 export type Place = Tables<'places'>;
 export type PlacePulse = Tables<'place_pulses'>;
+export type WeightEntry = Tables<'weight_entries'>;
 export type Post = Tables<'posts'>;
 export type PostComment = Tables<'post_comments'>;
-export type WeightEntry = Tables<'weight_entries'>;
+export type Circle = Tables<'circles'>;
+export type CircleMember = Tables<'circle_members'>;
+export type Walk = Tables<'walks'>;

@@ -1,5 +1,5 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { DogPhoto } from './database.types';
 import { signedVaultUrl } from './media';
@@ -14,12 +14,20 @@ export function useVaultPhotos(dogId: string | undefined) {
 
   const load = useCallback(async () => {
     if (!dogId) return;
-    const { data } = await supabase.from('dog_photos').select('*').eq('dog_id', dogId).order('created_at', { ascending: false }).limit(60);
+    const { data } = await supabase.from('dog_photos').select('*').eq('dog_id', dogId).eq('kind', 'snap').order('created_at', { ascending: false }).limit(60);
     const rows = data ?? [];
     const urls = await Promise.all(rows.map((r) => signedVaultUrl(r.storage_path).catch(() => null)));
     setPhotos(rows.flatMap((r, i) => (urls[i] ? [{ ...r, url: urls[i] as string }] : [])));
     setLoading(false);
   }, [dogId]);
+
+  // Native tabs do not always emit focus for lazily mounted screens, so load on mount too; focus keeps it fresh.
+
+  useEffect(() => {
+
+    void Promise.resolve().then(load);
+
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {

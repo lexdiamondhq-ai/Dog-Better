@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 import type { Database } from './database.types';
 
@@ -13,10 +13,13 @@ if (!url || !key) {
 
 export const supabase = createClient<Database>(url, key, {
   auth: {
-    storage: AsyncStorage,
+    // AsyncStorage touches `window` on web and explodes during Expo Router's static render on Node.
+    storage: Platform.OS === 'web' ? undefined : AsyncStorage,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
+    // PKCE so the Google OAuth round trip through the system browser returns a one-time code, never tokens in a URL.
+    flowType: 'pkce',
   },
 });
 

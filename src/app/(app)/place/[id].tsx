@@ -11,7 +11,9 @@ import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Text } from '@/components/ui/Text';
 import { relativeTime } from '@/lib/activity';
+import { REWARDS } from '@/engine/rewards';
 import { useAuth } from '@/lib/auth';
+import { usePoints } from '@/lib/points';
 import type { Place, PlacePulse } from '@/lib/database.types';
 import { CROWD, GROUND, KIND_META, type PlaceKind } from '@/lib/places';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +24,7 @@ export default function PlaceDetail() {
   const t = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const { award } = usePoints();
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [place, setPlace] = useState<Place | null>(null);
@@ -50,6 +53,7 @@ export default function PlaceDetail() {
     if (!user || !place) return;
     setSaving(true);
     await supabase.from('place_pulses').insert({ place_id: place.id, user_id: user.id, crowd, ground, shade, note: note.trim() || null });
+    await award({ kind: 'pulse', key: `pulse:${place.id}:${user.id}:${new Date().toISOString().slice(0, 10)}` });
     setNote('');
     setDone(true);
     await load();
@@ -73,7 +77,7 @@ export default function PlaceDetail() {
     <Screen keyboardShouldPersistTaps="handled">
       <ScreenHeader eyebrow={KIND_META[kind].label} title={place?.name ?? 'Loading'} onBack={() => router.back()} large={false} />
 
-      <Animated.View entering={FadeInUp.delay(40).springify().damping(18)}>
+      <Animated.View entering={FadeInUp.delay(40).duration(260)}>
         <Surface kind="fur" style={{ gap: space.md }}>
           <View style={styles.row}>
             <View style={{ flex: 1, gap: 2 }}>
@@ -122,7 +126,7 @@ export default function PlaceDetail() {
               <Switch value={shade} onValueChange={setShade} trackColor={{ true: t.brand }} />
             </View>
             <Field placeholder="Anything others should know? (optional)" value={note} onChangeText={setNote} maxLength={140} />
-            <Button label={done ? 'Pulse sent, thank you' : 'Send pulse'} icon={done ? 'check' : 'send'} onPress={send} loading={saving} kind={done ? 'secondary' : 'primary'} />
+            <Button label={done ? 'Pulse sent, thank you' : `Send pulse  +${REWARDS.pulse.points}`} icon={done ? 'check' : 'send'} onPress={send} loading={saving} kind={done ? 'secondary' : 'primary'} />
           </Surface>
         </Animated.View>
       </Section>
