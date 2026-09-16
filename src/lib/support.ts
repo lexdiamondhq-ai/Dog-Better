@@ -2,7 +2,7 @@ import * as Application from 'expo-application';
 import * as Device from 'expo-device';
 import { Linking, Platform } from 'react-native';
 
-export const SUPPORT_EMAIL = 'alexmedinajr@outlook.com';
+export const SUPPORT_EMAIL = 'support@dogbetter.app';
 
 /** Opens the mail app with the context support always ends up asking for anyway. */
 export function contactSupport(subject = 'Dog Better support', extra?: string) {

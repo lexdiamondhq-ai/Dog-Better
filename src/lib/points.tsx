@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { AppState } from 'react-native';
 
-import { levelFor, REWARDS, type BetterLevel, type RewardKind } from '@/engine/rewards';
+import { JAR_POCKET, levelFor, REWARDS, type BetterLevel, type RewardKind } from '@/engine/rewards';
 
 import { useAuth } from './auth';
 
@@ -21,6 +22,8 @@ type Api = {
   entries: PointEntry[];
   total: number;
   today: number;
+  todayCount: number;
+  pocket: number;
   lastAward: PointEntry | null;
   lastLevelUp: BetterLevel | null;
   award: (input: AwardInput) => Promise<PointEntry | null>;
@@ -33,6 +36,8 @@ const Ctx = createContext<Api>({
   entries: [],
   total: 0,
   today: 0,
+  todayCount: 0,
+  pocket: 0,
   lastAward: null,
   lastLevelUp: null,
   award: async () => null,
@@ -44,12 +49,20 @@ function storeKey(userId: string) {
   return `dogbetter.points.v1.${userId}`;
 }
 
-function dayStamp(iso: string) {
-  return iso.slice(0, 10);
+/** Local calendar day so the jar empties at the user's midnight, not UTC. */
+function localDay(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function entryDay(iso: string) {
+  return localDay(new Date(iso));
 }
 
 function sumForDay(rows: PointEntry[], day: string) {
-  return rows.filter((e) => dayStamp(e.at) === day).reduce((sum, e) => sum + e.points, 0);
+  return rows.filter((e) => entryDay(e.at) === day).reduce((sum, e) => sum + e.points, 0);
 }
 
 export function PointsProvider({ children }: PropsWithChildren) {
@@ -65,8 +78,7 @@ export function PointsProvider({ children }: PropsWithChildren) {
     let cancelled = false;
     void Promise.resolve().then(async () => {
       if (cancelled) return;
-      const day = new Date().toISOString().slice(0, 10);
-      setClockDay(day);
+      setClockDay(localDay());
       if (!userId) {
         setEntries([]);
         setLoaded(true);
@@ -90,6 +102,21 @@ export function PointsProvider({ children }: PropsWithChildren) {
     };
   }, [userId]);
 
+  useEffect(() => {
+    const tick = () => setClockDay((prev) => {
+      const day = localDay();
+      return prev === day ? prev : day;
+    });
+    const id = setInterval(tick, 30_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') tick();
+    });
+    return () => {
+      clearInterval(id);
+      sub.remove();
+    };
+  }, []);
+
   const persist = useCallback(async (next: PointEntry[]) => {
     if (!userId) return;
     await AsyncStorage.setItem(storeKey(userId), JSON.stringify(next));
@@ -100,11 +127,11 @@ export function PointsProvider({ children }: PropsWithChildren) {
       if (!userId) return null;
       const spec = REWARDS[input.kind];
       const now = new Date().toISOString();
-      const today = clockDay || dayStamp(now);
+      const today = clockDay || localDay();
       const key = spec.dailyCap ? `${today}:${input.key}` : input.key;
       const existing = entries.find((e) => e.key === key);
       if (existing) return null;
-      const todayKind = entries.filter((e) => e.kind === input.kind && dayStamp(e.at) === today).length;
+      const todayKind = entries.filter((e) => e.kind === input.kind && entryDay(e.at) === today).length;
       if (spec.dailyCap && todayKind >= spec.dailyCap) return null;
       const entry: PointEntry = {
         id: `${input.kind}:${key}:${now}`,
@@ -130,11 +157,16 @@ export function PointsProvider({ children }: PropsWithChildren) {
   const clearLevelUp = useCallback(() => setLastLevelUp(null), []);
 
   const today = useMemo(() => (clockDay ? sumForDay(entries, clockDay) : 0), [clockDay, entries]);
+  const todayCount = useMemo(
+    () => (clockDay ? entries.filter((e) => entryDay(e.at) === clockDay).length : 0),
+    [clockDay, entries],
+  );
+  const pocket = Math.min(JAR_POCKET, todayCount);
   const total = useMemo(() => entries.reduce((sum, e) => sum + e.points, 0), [entries]);
 
   const value = useMemo<Api>(
-    () => ({ loaded, entries, total, today, lastAward, lastLevelUp, award, clearToast, clearLevelUp }),
-    [loaded, entries, total, today, lastAward, lastLevelUp, award, clearToast, clearLevelUp],
+    () => ({ loaded, entries, total, today, todayCount, pocket, lastAward, lastLevelUp, award, clearToast, clearLevelUp }),
+    [loaded, entries, total, today, todayCount, pocket, lastAward, lastLevelUp, award, clearToast, clearLevelUp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

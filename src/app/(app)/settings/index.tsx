@@ -173,6 +173,7 @@ export default function Settings() {
 
       <Section title="Help">
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
+          <SettingsRow icon="sparkle" label="Welcome screen" detail="The cartoon first-open. Tap the pup to change tricks." onPress={() => router.push({ pathname: '/(auth)/welcome', params: { preview: '1' } })} />
           <SettingsRow icon="learn" label="Help center" detail="How the score, detective, and care sheet work" onPress={() => router.push('/(app)/settings/help')} />
           <SettingsRow icon="mail" label="Contact support" detail={SUPPORT_EMAIL} onPress={() => contactSupport()} />
           <SettingsRow icon="sparkle" label="Suggest a feature" detail="Tell us what would make Dog Better better" onPress={() => contactSupport('Feature idea for Dog Better')} last />

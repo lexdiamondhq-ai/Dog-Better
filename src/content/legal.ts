@@ -16,7 +16,7 @@ export const LEGAL: Record<'privacy' | 'terms', LegalDoc> = {
       { heading: 'Location', body: 'Location is used only while the Safe spaces map is open, to find places near you. Crowd reports you post are tied to the place, not to you, when shown to others.' },
       { heading: 'Health inferences', body: 'Guidance in the app is general triage and never a diagnosis. It is generated from what you log; we do not share it with insurers or third parties.' },
       { heading: 'Where data lives', body: 'Your data is stored with Supabase (hosted PostgreSQL and file storage) in the United States, protected by row-level security so only your account can read your rows.' },
-      { heading: 'Your rights', body: 'Export everything at any time from Settings. Request deletion from Settings and we remove your account and all its data after confirming by email. Questions: alexmedinajr@outlook.com.' },
+      { heading: 'Your rights', body: 'Export everything at any time from Settings. Request deletion from Settings and we remove your account and all its data after confirming by email. Questions: support@dogbetter.app.' },
       { heading: 'Children', body: 'Dog Better is for adults. We do not knowingly collect information from anyone under 16.' },
     ],
   },
@@ -31,7 +31,7 @@ export const LEGAL: Record<'privacy' | 'terms', LegalDoc> = {
       { heading: 'Product links', body: 'Some product recommendations may include affiliate links. Recommendations are driven by your dog\u2019s profile rules first; we only link to a product when it passes them.' },
       { heading: 'Availability', body: 'We aim for the app to work every day, but it is provided as is. We may change or discontinue features with notice where practical. Emergency information, core records, and the care sheet will not be placed behind a paywall.' },
       { heading: 'Liability', body: 'To the extent permitted by law, Dog Better is not liable for decisions made from information in the app. Always confirm anything health related with your vet.' },
-      { heading: 'Contact', body: 'alexmedinajr@outlook.com' },
+      { heading: 'Contact', body: 'support@dogbetter.app' },
     ],
   },
 };

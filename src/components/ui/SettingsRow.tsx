@@ -1,6 +1,7 @@
 import { StyleSheet, Switch, View } from 'react-native';
 
 import { Icon, type IconName } from './Icon';
+import { IconWell } from './IconWell';
 import { Tap } from './Tap';
 import { Text } from './Text';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -24,9 +25,7 @@ export function SettingsRow({ icon, label, detail, onPress, toggle, value, tone 
   const fg = tone === 'danger' ? t.bad : t.text;
   const inner = (
     <View style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
-      <View style={[styles.icon, { backgroundColor: tone === 'danger' ? `${t.bad}22` : t.surfaceStrong }]}>
-        <Icon name={icon} size={16} color={tone === 'danger' ? t.bad : t.brand} />
-      </View>
+      <IconWell name={icon} tone={tone === 'danger' ? 'bad' : 'brand'} />
       <View style={{ flex: 1, gap: 1 }}>
         <Text variant="bodyStrong" style={{ color: fg }}>
           {label}
@@ -61,5 +60,4 @@ export function SettingsRow({ icon, label, detail, onPress, toggle, value, tone 
 
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56 },
-  icon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
 });

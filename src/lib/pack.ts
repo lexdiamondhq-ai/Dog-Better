@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from './auth';
 import type { Post, Profile } from './database.types';
+import { isVideoPath } from './media';
 import { supabase } from './supabase';
 
 export type FeedPost = Post & {
@@ -22,9 +23,11 @@ export async function fetchFeed(userId: string, opts?: { authorId?: string; circ
   else if (opts && 'circleId' in opts) return [];
   const { data: posts } = await q;
   if (!posts?.length) return [];
+  const rows = posts.filter((p) => !p.image_path || !isVideoPath(p.image_path));
+  if (!rows.length) return [];
 
-  const ids = posts.map((p) => p.id);
-  const authorIds = Array.from(new Set(posts.map((p) => p.author_id)));
+  const ids = rows.map((p) => p.id);
+  const authorIds = Array.from(new Set(rows.map((p) => p.author_id)));
   const [{ data: profiles }, { data: likes }, { data: comments }] = await Promise.all([
     supabase.from('profiles').select('id, display_name, avatar_url').in('id', authorIds),
     supabase.from('post_likes').select('post_id, user_id').in('post_id', ids),
@@ -41,7 +44,7 @@ export async function fetchFeed(userId: string, opts?: { authorId?: string; circ
   const commentCount = new Map<string, number>();
   for (const c of comments ?? []) commentCount.set(c.post_id, (commentCount.get(c.post_id) ?? 0) + 1);
 
-  return posts.map((p) => {
+  return rows.map((p) => {
     const dog = (p as unknown as { dog: { name: string; avatar_url: string | null } | null }).dog;
     const { dog: _drop, ...rest } = p as Post & { dog: unknown };
     void _drop;

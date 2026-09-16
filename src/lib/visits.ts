@@ -38,15 +38,18 @@ export async function uploadVetVisit(input: { dogId: string; userId: string; tit
   const folder = `dogs/${input.dogId}/visits`;
   let storage_path: string;
   let fileLabel: string | null = null;
+  let localUri: string;
 
   if (input.from === 'file') {
     const file = await pickVisitFile();
     if (!file) return null;
+    localUri = file.uri;
     storage_path = await uploadVaultFile({ bucket: 'vault', userId: input.userId, folder, uri: file.uri, name: file.name, mime: file.mime });
     fileLabel = file.name;
   } else {
     const uri = input.from === 'camera' ? await captureWithCamera([4, 5]) : await pickFromLibrary([4, 5]);
     if (!uri) return null;
+    localUri = uri;
     storage_path = await uploadImage({ bucket: 'vault', userId: input.userId, folder, uri });
   }
 
@@ -59,7 +62,7 @@ export async function uploadVetVisit(input: { dogId: string; userId: string; tit
     kind: 'vet_visit',
   });
   if (error) throw error;
-  return { storage_path, caption, isImage: isImagePath(storage_path) };
+  return { storage_path, caption, isImage: isImagePath(storage_path), localUri };
 }
 
 export function askVetVisitSource(onPick: (from: VisitSource) => void) {

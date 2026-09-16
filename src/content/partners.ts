@@ -18,7 +18,7 @@ export type ShopLink = {
 };
 
 /** Replace with the approved Amazon Associates tag before store review. */
-export const AMAZON_TAG = 'dogbetter-20';
+export const AMAZON_TAG = 'dogbetter20-20';
 
 export const SHOP_CATEGORIES: { id: ShopCategory | 'all'; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -66,7 +66,7 @@ export const SHOP_PARTNERS: Partner[] = [
     id: 'amazon-essentials',
     name: 'Amazon pet essentials',
     tagline: 'Food, chews, and gear sized to this dog.',
-    url: 'https://www.amazon.com/s?k=dog+essentials&tag=dogbetter-20',
+    url: `https://www.amazon.com/s?k=dog+essentials&tag=${AMAZON_TAG}`,
     disclosure: 'Dog Better may earn a commission from qualifying purchases.',
   },
 ];

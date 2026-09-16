@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/Button';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { IconWell } from '@/components/ui/IconWell';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { useDogs } from '@/lib/dogs';
@@ -19,12 +20,12 @@ import { radius, space } from '@/theme/tokens';
 const FEATURES: { icon: IconName; title: string; line: string }[] = [
   { icon: 'today', title: 'A plan that changes with the day', line: 'Weather, sleep, triggers, and your schedule shape what to do next.' },
   { icon: 'detective', title: 'Pattern detective', line: 'What changed in the last 72 hours, matched against your dog\u2019s own history.' },
-  { icon: 'pill', title: 'Medication intelligence', line: 'Given confirmations, refill countdowns, side-effect links to symptoms.' },
+  { icon: 'pill', title: 'Medication intelligence', line: 'A visit photo or file is read for meds, written on the profile, and scheduled on the calendar.' },
   { icon: 'document', title: 'Clinic pack', line: 'Weight trend, symptom timeline, and the care sheet as a file the clinic can keep.' },
-  { icon: 'paw', title: 'Every dog in the house', line: 'Unlimited profiles with their own plans and records.' },
-  { icon: 'sparkle', title: 'Unlimited Looks', line: 'Point the camera at a paw, a bag, or a label. Three a day stay free.' },
-  { icon: 'paw', title: 'The daily Learn wheel', line: 'Five sessions stay free. Fifty-plus rotate for Premium.' },
-  { icon: 'sparkle', title: 'No ads', line: 'Nothing between you and your dog.' },
+  { icon: 'careTeam', title: 'Every dog in the house', line: 'Unlimited profiles with their own plans and records.' },
+  { icon: 'camera', title: 'Unlimited Looks', line: 'Point the camera at a paw, a bag, or a label. Three a day stay free.' },
+  { icon: 'learn', title: 'The daily Learn wheel', line: 'Five sessions stay free. Fifty-plus rotate for Premium.' },
+  { icon: 'shield', title: 'No ads', line: 'Nothing between you and your dog.' },
 ];
 
 /**
@@ -99,9 +100,7 @@ export default function Paywall() {
         <View style={styles.features}>
           {FEATURES.map((f, i) => (
             <Animated.View key={f.title} entering={FadeInUp.delay(80 + i * 40).duration(260)} style={styles.feature}>
-              <View style={[styles.featureIcon, { backgroundColor: t.bgRaised }]}>
-                <Icon name={f.icon} size={16} color={t.brand} />
-              </View>
+              <IconWell name={f.icon} size="sm" />
               <View style={{ flex: 1 }}>
                 <Text variant="bodyStrong">{f.title}</Text>
                 <Text variant="caption" tone="secondary">
@@ -185,7 +184,6 @@ const styles = StyleSheet.create({
   hero: { alignItems: 'center', gap: space.xs },
   features: { gap: space.sm },
   feature: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  featureIcon: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   plans: { gap: space.sm },
   plan: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.md },
   badge: { paddingHorizontal: space.sm, height: 22, borderRadius: 11, justifyContent: 'center' },

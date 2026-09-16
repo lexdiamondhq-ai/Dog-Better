@@ -118,6 +118,7 @@ export default function Community() {
         />
 
         <View style={styles.chips}>
+          <Chip label="Barks" icon="video" tone="accent" onPress={() => router.push('/(app)/barks')} />
           {circles.circles.map((c) => (
             <Chip key={c.id} label={circleLabel(c)} icon={c.kind === 'nearby' ? 'location' : c.kind === 'contacts' ? 'person' : 'careTeam'} selected={c.id === active?.id} onPress={() => circles.setActive(c.id)} />
           ))}

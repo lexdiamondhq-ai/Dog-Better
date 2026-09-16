@@ -1,7 +1,6 @@
-import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
 import { Pedometer } from 'expo-sensors';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { Walk } from './database.types';
 import { supabase } from './supabase';
@@ -13,7 +12,7 @@ export type WalkPoint = { latitude: number; longitude: number };
  * Steps are the owner's. Location is only watched while a walk is in progress.
  */
 
-function metresBetween(a: WalkPoint, b: WalkPoint) {
+export function metresBetween(a: WalkPoint, b: WalkPoint) {
   const r = 6371000;
   const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
   const dLng = ((b.longitude - a.longitude) * Math.PI) / 180;
@@ -75,66 +74,10 @@ export type LiveWalk = {
   path: WalkPoint[];
   here: WalkPoint | null;
   locationDenied: boolean;
+  placeName?: string;
 };
 
-export function useLiveWalk() {
-  const [walk, setWalk] = useState<LiveWalk | null>(null);
-  const stepsSub = useRef<{ remove: () => void } | null>(null);
-  const locSub = useRef<{ remove: () => void } | null>(null);
-
-  const pushPoint = useCallback((point: WalkPoint) => {
-    setWalk((w) => {
-      if (!w) return w;
-      const last = w.path[w.path.length - 1];
-      if (last && metresBetween(last, point) < 8) return { ...w, here: point };
-      return { ...w, here: point, path: [...w.path, point] };
-    });
-  }, []);
-
-  const start = useCallback(async () => {
-    const startedAt = new Date();
-    setWalk({ startedAt, steps: 0, path: [], here: null, locationDenied: false });
-    stepsSub.current?.remove();
-    locSub.current?.remove();
-    stepsSub.current = Pedometer.watchStepCount((r) => setWalk((w) => (w ? { ...w, steps: r.steps } : w)));
-
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (!perm.granted) {
-      setWalk((w) => (w ? { ...w, locationDenied: true } : w));
-      return;
-    }
-    try {
-      const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      pushPoint({ latitude: first.coords.latitude, longitude: first.coords.longitude });
-      locSub.current = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.Balanced, distanceInterval: 8, timeInterval: 3000 },
-        (loc) => pushPoint({ latitude: loc.coords.latitude, longitude: loc.coords.longitude }),
-      );
-    } catch {
-      setWalk((w) => (w ? { ...w, locationDenied: true } : w));
-    }
-  }, [pushPoint]);
-
-  const stop = useCallback(() => {
-    stepsSub.current?.remove();
-    locSub.current?.remove();
-    stepsSub.current = null;
-    locSub.current = null;
-    const finished = walk;
-    setWalk(null);
-    return finished;
-  }, [walk]);
-
-  useEffect(
-    () => () => {
-      stepsSub.current?.remove();
-      locSub.current?.remove();
-    },
-    [],
-  );
-
-  return { walk, start, stop };
-}
+export { useLiveWalk } from './WalksProvider';
 
 export async function saveWalk(input: { dogId: string; ownerId: string; startedAt: Date; endedAt: Date; steps: number; notes?: string | null }) {
   const { data, error } = await supabase

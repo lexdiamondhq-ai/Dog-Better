@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Text } from '@/components/ui/Text';
+import { medsLineFromNotes } from '@/engine/sheetMeds';
 import { humanize, relativeTime, useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
@@ -65,6 +66,7 @@ export default function Clinic() {
         <Surface kind="grouped" padding={0}>
           <Row label="Breed / sex" value={[dog?.breed, dog?.sex].filter(Boolean).join(' · ') || 'Not set'} />
           <Row label="Allergies" value={dog?.allergies?.length ? dog.allergies.join(', ') : 'None logged'} />
+          <Row label="Medications" value={medsLineFromNotes(dog?.notes ?? null) ?? 'None pulled from a visit'} />
           <Row label="Clinic" value={dog?.vet_name ?? 'Not set'} />
           <Row label="Microchip" value={dog?.microchip ?? 'Not set'} last />
         </Surface>

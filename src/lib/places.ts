@@ -41,9 +41,34 @@ const DOG_OK = 'yes|leashed|unleashed|outside';
 
 type OsmPlace = Omit<Place, 'id' | 'created_at' | 'created_by'>;
 
+async function overpassElements(query: string, ms = 9000): Promise<OsmElement[]> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const elements = await Promise.any(
+      OVERPASS_MIRRORS.map(async (url) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'DogBetter/1.0 (mobile app)' },
+          body: `data=${encodeURIComponent(query)}`,
+        });
+        if (!res.ok) throw new Error(`Overpass ${res.status}`);
+        const text = await res.text();
+        if (!text.trimStart().startsWith('{')) throw new Error('Overpass returned a non-JSON response');
+        return (JSON.parse(text) as { elements: OsmElement[] }).elements;
+      }),
+    );
+    ctrl.abort();
+    return elements;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Pulls dog-friendly places from OpenStreetMap within `radiusM` of a point. Throws if every mirror fails. */
 export async function fetchOsmPlaces(lat: number, lng: number, radiusM = 5000): Promise<OsmPlace[]> {
-  const q = `[out:json][timeout:25];
+  const q = `[out:json][timeout:12];
 (
   nwr["leisure"="dog_park"](around:${radiusM},${lat},${lng});
   nwr["amenity"~"cafe|restaurant|bar|pub|biergarten"]["dog"~"${DOG_OK}"](around:${radiusM},${lat},${lng});
@@ -52,25 +77,72 @@ export async function fetchOsmPlaces(lat: number, lng: number, radiusM = 5000): 
   nwr["natural"="beach"]["dog"~"${DOG_OK}"](around:${radiusM},${lat},${lng});
 );
 out center tags;`;
+  return normalizeOsm(await overpassElements(q), lat, lng);
+}
 
-  let lastError: unknown = null;
-  for (const url of OVERPASS_MIRRORS) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'DogBetter/1.0 (mobile app)' },
-        body: `data=${encodeURIComponent(q)}`,
-      });
-      if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      const text = await res.text();
-      if (!text.trimStart().startsWith('{')) throw new Error('Overpass returned a non-JSON response');
-      const json = JSON.parse(text) as { elements: OsmElement[] };
-      return normalizeOsm(json.elements, lat, lng);
-    } catch (e) {
-      lastError = e;
-    }
+export const WALK_PLACE_KINDS: PlaceKind[] = ['dog_park', 'trail', 'other', 'beach'];
+
+type WalkSpotMem = { lat: number; lng: number; at: number; places: OsmPlace[] };
+let walkSpotMem: WalkSpotMem | null = null;
+
+function nearestOf(places: OsmPlace[], lat: number, lng: number, n: number) {
+  return [...places].sort((a, b) => haversineKm(lat, lng, a.lat, a.lng) - haversineKm(lat, lng, b.lat, b.lng)).slice(0, n);
+}
+
+/** Parks, dog areas, and trails as two small Overpass calls so a slow trail search cannot starve parks. */
+export async function fetchOsmWalkSpots(lat: number, lng: number, radiusM = 6000): Promise<OsmPlace[]> {
+  if (walkSpotMem && Date.now() - walkSpotMem.at < 15 * 60_000 && haversineKm(lat, lng, walkSpotMem.lat, walkSpotMem.lng) < 1.2 && walkSpotMem.places.some((p) => p.kind === 'other' || p.kind === 'trail')) {
+    return walkSpotMem.places;
   }
-  throw lastError instanceof Error ? lastError : new Error('Could not reach OpenStreetMap');
+
+  const areasQ = `[out:json][timeout:12];
+(
+  node["leisure"="dog_park"](around:${radiusM},${lat},${lng});
+  way["leisure"="dog_park"](around:${radiusM},${lat},${lng});
+  node["leisure"="park"]["name"](around:${radiusM},${lat},${lng});
+  way["leisure"="park"]["name"](around:${radiusM},${lat},${lng});
+  way["leisure"="recreation_ground"]["name"](around:${radiusM},${lat},${lng});
+  way["leisure"="nature_reserve"]["name"](around:${radiusM},${lat},${lng});
+  node["natural"="beach"]["name"](around:${radiusM},${lat},${lng});
+  way["natural"="beach"]["name"](around:${radiusM},${lat},${lng});
+);
+out center tags;`;
+
+  const trailsQ = `[out:json][timeout:12];
+(
+  way["highway"="path"]["name"](around:${radiusM},${lat},${lng});
+  way["highway"="bridleway"]["name"](around:${radiusM},${lat},${lng});
+  way["highway"="track"]["name"]["foot"!="no"](around:${radiusM},${lat},${lng});
+  way["highway"="footway"]["name"]["footway"!="sidewalk"]["footway"!="crossing"](around:${radiusM},${lat},${lng});
+);
+out center tags;`;
+
+  const [areaEls, trailEls] = await Promise.all([
+    overpassElements(areasQ, 10000).catch(() => [] as OsmElement[]),
+    overpassElements(trailsQ, 10000).catch(() => [] as OsmElement[]),
+  ]);
+
+  const areas = normalizeOsm(areaEls, lat, lng).filter((p) => p.kind !== 'patio');
+  const trails = normalizeOsm(trailEls, lat, lng).filter((p) => p.kind === 'trail');
+  const places = [
+    ...nearestOf(
+      areas.filter((p) => p.kind === 'dog_park'),
+      lat,
+      lng,
+      15,
+    ),
+    ...nearestOf(
+      areas.filter((p) => p.kind === 'other' || p.kind === 'beach'),
+      lat,
+      lng,
+      24,
+    ),
+    ...nearestOf(trails, lat, lng, 24),
+  ];
+  const byKey = new Map(places.map((p) => [`${p.kind}:${p.osm_id ?? p.name}`, p]));
+  const list = Array.from(byKey.values()).sort((a, b) => haversineKm(lat, lng, a.lat, a.lng) - haversineKm(lat, lng, b.lat, b.lng));
+  walkSpotMem = { lat, lng, at: Date.now(), places: list };
+  return list;
 }
 
 function normalizeOsm(elements: OsmElement[], lat: number, lng: number): OsmPlace[] {

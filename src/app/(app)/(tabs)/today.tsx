@@ -9,8 +9,10 @@ import Animated, { FadeIn } from 'react-native-reanimated';
 import { DogSwitcher } from '@/components/dogs/DogSwitcher';
 import { LookOrb } from '@/components/look/LookOrb';
 import { EarnBadge } from '@/components/points/EarnBadge';
+import { TreatPocket } from '@/components/points/TreatPocket';
 import { DogAvatar } from '@/components/ui/DogAvatar';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { IconWell } from '@/components/ui/IconWell';
 import { Screen, Section } from '@/components/ui/Screen';
 import { GroupedList } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
@@ -19,12 +21,12 @@ import { useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
 import { useInbox } from '@/lib/inbox';
-import { useBetterLevel, usePoints } from '@/lib/points';
+import { usePoints } from '@/lib/points';
 import { REWARDS } from '@/engine/rewards';
 import { pickDuty, useHeatF, useWalksToday } from '@/lib/duty';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
-import { useReminders } from '@/lib/reminders';
+import { rosterMedLabel, useReminders } from '@/lib/reminders';
 import { supabase } from '@/lib/supabase';
 import { formatWeight } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -45,9 +47,8 @@ export default function Today() {
   const { dog } = useDogs();
   const activity = useDogActivity(dog);
   const inbox = useInbox();
-  const { award, total, today } = usePoints();
-  const level = useBetterLevel();
-  const bellCount = inbox.unread > 0 ? inbox.unread : 3;
+  const { award } = usePoints();
+  const bellCount = inbox.unread;
   const { weightUnit } = usePreferences();
   const reminders = useReminders(dog?.id);
   const heatF = useHeatF();
@@ -58,13 +59,13 @@ export default function Today() {
   const name = dog?.name ?? 'your dog';
   const loggedKinds = new Set(activity.mealsToday.map((m) => m.kind));
   const duty = useMemo(
-    () => pickDuty({ name, dueToday: reminders.dueToday, walksToday, heatF }),
-    [name, reminders.dueToday, walksToday, heatF],
+    () => pickDuty({ name, dueToday: reminders.dueToday, nextMed: reminders.nextMed, walksToday, heatF }),
+    [name, reminders.dueToday, reminders.nextMed, walksToday, heatF],
   );
   const sky = dog?.avatar_url;
   const weight = formatWeight(dog?.weight_kg, weightUnit);
   const latestHealth = activity.health[0];
-  const nextMed = reminders.dueToday.find((r) => r.kind === 'medication');
+  const nextMed = reminders.nextMed;
   const nextWalk = reminders.dueToday.find((r) => r.kind === 'walk');
 
   const logMeal = async (kind: 'breakfast' | 'dinner' | 'treat') => {
@@ -101,7 +102,9 @@ export default function Today() {
           </Text>
           <Tap onPress={onPrimary} haptic="medium" style={[styles.primary, { backgroundColor: t.bgRaised }]} accessibilityRole="button" accessibilityLabel={duty.label}>
             <Icon name={duty.icon} size={18} color={t.brand} />
-            <Text variant="headline">{duty.label}</Text>
+            <Text variant="headline" numberOfLines={1} ellipsizeMode="tail" style={styles.primaryLabel}>
+              {duty.label}
+            </Text>
           </Tap>
         </View>
       </Animated.View>
@@ -115,13 +118,15 @@ export default function Today() {
             <Tap onPress={() => setSwitcher(true)} haptic="selection" style={styles.slot} accessibilityLabel="Switch dog profile">
               <DogAvatar uri={dog?.avatar_url} size={28} ring={false} />
             </Tap>
-            <Tap onPress={() => router.push('/(app)/inbox')} haptic="selection" style={styles.slot} accessibilityLabel={`${bellCount} new activity`}>
+            <Tap onPress={() => router.push('/(app)/inbox')} haptic="selection" style={styles.slot} accessibilityLabel={bellCount ? `${bellCount} new activity` : 'Inbox'}>
               <Icon name="bell" size={22} color={t.text} />
-              <View style={[styles.badge, { backgroundColor: t.bad }]}>
-                <Text variant="micro" style={{ color: t.onMeaning }}>
-                  {bellCount > 9 ? '9+' : bellCount}
-                </Text>
-              </View>
+              {bellCount > 0 ? (
+                <View style={[styles.badge, { backgroundColor: t.bad, borderColor: t.bg }]}>
+                  <Text variant="micro" style={{ color: t.onMeaning }}>
+                    {bellCount > 9 ? '9+' : bellCount}
+                  </Text>
+                </View>
+              ) : null}
             </Tap>
             <Tap onPress={() => router.push('/(app)/settings')} haptic="selection" style={styles.slot} accessibilityLabel="Settings">
               <Icon name="settings" size={22} color={t.text} />
@@ -129,16 +134,7 @@ export default function Today() {
           </View>
         </View>
 
-        <Tap onPress={() => router.push('/(app)/settings/points')} haptic="selection" style={[styles.jar, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
-          <Icon name="paw" size={18} color={t.accentDeep} />
-          <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">{total.toLocaleString()} treats</Text>
-            <Text variant="caption" tone="secondary">
-              {level.name} · {today} today
-            </Text>
-          </View>
-          <EarnBadge points={REWARDS.meal.points} />
-        </Tap>
+        <TreatPocket onPress={() => router.push('/(app)/settings/points')} />
 
         {dog ? (
           <View style={[styles.care, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
@@ -171,8 +167,8 @@ export default function Today() {
         <Section title="On the roster">
           <View style={styles.facts}>
             <Fact icon="walk" label="Walk" value={walksToday ? 'Done' : nextWalk ? nextWalk.time : 'Open'} onPress={() => router.push('/(app)/(tabs)/track')} />
-            <Fact icon="pill" label="Meds" value={nextMed ? nextMed.time : 'None'} onPress={() => router.push('/(app)/calendar')} />
-            <Fact icon="sun" label="Heat" value={heatF != null ? `${Math.round(heatF)}°` : '—'} />
+            <Fact icon="pill" label="Next dose" value={rosterMedLabel(nextMed)} onPress={() => router.push('/(app)/calendar')} />
+            <Fact icon="sun" label="Heat" value={heatF != null ? `${Math.round(heatF)}°` : '--'} />
             <Fact icon="document" label="Tonight" value="Sheet" onPress={() => router.push('/(app)/care-team')} />
           </View>
         </Section>
@@ -209,10 +205,9 @@ export default function Today() {
 
         <Section title="The aisle">
           <GroupedList>
-            <HelpRow icon="sparkle" label="Look" detail="Photo of a paw, a bag, a label. AI, not a vet" onPress={() => router.push('/(app)/look')} />
             <HelpRow icon="scan" label="Check a treat" detail="Barcode or ingredients, sized to them" onPress={() => router.push('/(app)/scan')} />
             <HelpRow icon="link" label="Shop for this dog" detail="Amazon links with our tag" onPress={() => router.push('/(app)/shop')} />
-            <HelpRow icon="vet" label="Clinic pack" detail="Weight, symptoms, sheet for the exam room" onPress={() => router.push('/(app)/clinic')} />
+            <HelpRow icon="park" label="Parks and trails" detail="Dog parks, areas, and trails. Pick one and start a walk" onPress={() => router.push('/(app)/walk-spots')} />
             <HelpRow icon="detective" label="Log a symptom" detail="What you see, then a next step" onPress={() => router.push('/(app)/symptoms')} />
             <HelpRow icon="walk" label="Open Track" detail="The ledger: walks, weight, food" onPress={() => router.push('/(app)/(tabs)/track')} last />
           </GroupedList>
@@ -231,18 +226,20 @@ function Fact({ icon, label, value, onPress }: { icon: IconName; label: string; 
   const inner = (
     <View style={[styles.fact, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
       <Icon name={icon} size={16} color={t.brand} />
-      <Text variant="bodyStrong">{value}</Text>
-      <Text variant="caption" tone="tertiary">
+      <Text variant="bodyStrong" numberOfLines={1} ellipsizeMode="tail" style={styles.factValue}>
+        {value}
+      </Text>
+      <Text variant="caption" tone="tertiary" numberOfLines={1}>
         {label}
       </Text>
     </View>
   );
   return onPress ? (
-    <Tap onPress={onPress} haptic="selection" style={{ flex: 1 }}>
+    <Tap onPress={onPress} haptic="selection" style={styles.factWrap}>
       {inner}
     </Tap>
   ) : (
-    <View style={{ flex: 1 }}>{inner}</View>
+    <View style={styles.factWrap}>{inner}</View>
   );
 }
 
@@ -251,9 +248,7 @@ function HelpRow({ icon, label, detail, onPress, last }: { icon: IconName; label
   return (
     <Tap onPress={onPress} haptic="selection" scaleTo={0.99}>
       <View style={[styles.help, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
-        <View style={[styles.helpIcon, { backgroundColor: t.surface }]}>
-          <Icon name={icon} size={16} color={t.brand} />
-        </View>
+        <IconWell name={icon} />
         <View style={{ flex: 1 }}>
           <Text variant="bodyStrong">{label}</Text>
           <Text variant="caption" tone="secondary">
@@ -275,19 +270,21 @@ const styles = StyleSheet.create({
   care: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: space.md, paddingRight: space.sm, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   careMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   careSend: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  badge: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
-  jar: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  badge: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   portraitBody: { alignItems: 'center', paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.sm, zIndex: 2 },
   planLine: { color: 'rgba(250,243,230,0.86)', textAlign: 'center', maxWidth: 320 },
   primary: {
     marginTop: space.xs,
     minHeight: 52,
+    maxWidth: '100%',
     paddingHorizontal: space.xl,
     borderRadius: radius.pill,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.sm,
+    overflow: 'hidden',
   },
+  primaryLabel: { flexShrink: 1 },
   below: { paddingHorizontal: space.xl, gap: space.lg },
   mealRow: { flexDirection: 'row', gap: space.sm },
   meal: {
@@ -300,7 +297,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   facts: { flexDirection: 'row', gap: space.sm },
-  fact: { alignItems: 'center', gap: 2, paddingVertical: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  factWrap: { flex: 1, minWidth: 0 },
+  fact: { alignItems: 'center', gap: 2, paddingVertical: space.md, paddingHorizontal: space.xs, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  factValue: { width: '100%', textAlign: 'center' },
   help: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
-  helpIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
 });

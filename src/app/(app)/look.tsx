@@ -20,7 +20,7 @@ import { LOOK_FOCUSES, lookAtPhoto, type LookFocus, type LookResult } from '@/li
 import { takeLookSlot } from '@/lib/looks';
 import { pickFromLibrary } from '@/lib/media';
 import { useTheme } from '@/theme/ThemeProvider';
-import { radius, space } from '@/theme/tokens';
+import { palette, radius, space } from '@/theme/tokens';
 
 export default function LookScreen() {
   const t = useTheme();
@@ -100,7 +100,7 @@ export default function LookScreen() {
           <View style={styles.bannerInner}>
             <Icon name="sparkle" size={16} color={t.accent} />
             <View style={{ flex: 1 }}>
-              <Text variant="label" style={{ color: '#FAF3E6' }}>
+              <Text variant="label" style={{ color: palette.paper }}>
                 This is AI
               </Text>
               <Text variant="caption" style={{ color: 'rgba(250,243,230,0.86)' }}>

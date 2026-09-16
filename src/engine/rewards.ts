@@ -43,6 +43,9 @@ export const REWARD_LIST = Object.values(REWARDS);
 
 export type BetterLevel = { name: string; min: number; line: string };
 
+/** How many biscuits the Today jar can hold. Midnight empties it. */
+export const JAR_POCKET = 5;
+
 export const LEVELS: BetterLevel[] = [
   { name: 'Pup', min: 0, line: 'First steps. Every log counts.' },
   { name: 'Walker', min: 80, line: 'You are showing up on the days that matter.' },

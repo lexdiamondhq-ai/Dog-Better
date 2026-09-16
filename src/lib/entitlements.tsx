@@ -36,7 +36,7 @@ type Api = {
 };
 
 const NONE: Entitlement = { active: false, plan: null, trial: false, expiresAt: null };
-const KEY = 'dogbetter.entitlement.mock.v1';
+const KEY = 'dogbetter.entitlement.mock.v2';
 const SEEN_KEY = 'dogbetter.paywall.seen.v1';
 
 /** Stand-in for the app store until StoreKit is connected. Persists on-device so the trial survives restarts. */

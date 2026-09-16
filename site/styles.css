@@ -1,0 +1,74 @@
+:root {
+  --espresso: #1e120c;
+  --cocoa: #4a2a17;
+  --paper: #f6eee2;
+  --ivory: #fffcf7;
+  --oat: #eee2cf;
+  --amber: #f0a319;
+  --forest: #277a4b;
+  --text: #31190c;
+  --muted: #6e4a33;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  background: var(--paper);
+  color: var(--text);
+  line-height: 1.55;
+}
+
+a { color: var(--cocoa); }
+a:hover { color: var(--espresso); }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 28px 22px 64px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 40px; }
+.mark { font-weight: 700; letter-spacing: -0.03em; font-size: 22px; text-decoration: none; color: var(--espresso); }
+nav { display: flex; flex-wrap: wrap; gap: 14px; font-size: 14px; }
+
+h1 { font-size: clamp(36px, 6vw, 56px); line-height: 1.05; letter-spacing: -0.04em; margin: 0 0 16px; }
+h2 { font-size: 22px; letter-spacing: -0.02em; margin: 32px 0 10px; }
+p.lead { font-size: 20px; color: var(--muted); margin: 0 0 28px; }
+
+.card {
+  background: var(--ivory);
+  border: 1px solid var(--oat);
+  border-radius: 18px;
+  padding: 22px 22px 8px;
+  margin: 28px 0;
+}
+.card ul { padding-left: 18px; margin: 0 0 18px; }
+.card li { margin: 0 0 10px; }
+
+.cta {
+  display: inline-block;
+  background: var(--espresso);
+  color: #fff8f0;
+  text-decoration: none;
+  padding: 12px 18px;
+  border-radius: 999px;
+  font-size: 15px;
+  margin-right: 10px;
+  margin-top: 8px;
+}
+.cta.ghost { background: transparent; color: var(--espresso); border: 1px solid var(--cocoa); }
+
+.note {
+  background: #fff4d6;
+  border: 1px solid #e6c08c;
+  border-radius: 14px;
+  padding: 16px 18px;
+  font-size: 15px;
+}
+
+footer {
+  margin-top: 56px;
+  padding-top: 20px;
+  border-top: 1px solid var(--oat);
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.doc h2 { font-size: 18px; }
+.doc p { margin: 0 0 14px; }

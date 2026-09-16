@@ -6,18 +6,19 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { DogAvatar } from '@/components/ui/DogAvatar';
 import { Icon, type IconName } from '@/components/ui/Icon';
+import { IconWell } from '@/components/ui/IconWell';
 import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { GroupedList, Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { INSURANCE_PARTNERS } from '@/content/partners';
+import { medsLineFromNotes } from '@/engine/sheetMeds';
 import { useAuth } from '@/lib/auth';
 import { ADD_DOG_HREF, dogAgeLabel, useDogs } from '@/lib/dogs';
-import { changeDogPhoto } from '@/lib/media';
+import { changeDogPhoto, isImagePath } from '@/lib/media';
 import { usePoints } from '@/lib/points';
 import { usePreferences } from '@/lib/preferences';
 import { formatWeight } from '@/lib/units';
-import { isImagePath } from '@/lib/media';
 import { useVaultPhotos } from '@/lib/vault';
 import { useVetVisits } from '@/lib/visits';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -161,6 +162,7 @@ export default function Profile() {
             />
             <Row icon="shield" label="Microchip" value={dog?.microchip ?? 'Not set'} onPress={() => router.push('/(app)/dog/edit')} />
             <Row icon="warning" label="Allergies" value={dog?.allergies?.length ? dog.allergies.join(', ') : 'None known'} onPress={() => router.push('/(app)/dog/edit')} />
+            <Row icon="pill" label="Medications" value={medsLineFromNotes(dog?.notes ?? null) ?? 'Upload a visit on the care sheet'} onPress={() => router.push('/(app)/care-team')} />
             <Row icon="info" label="Notes" value={dog?.notes ?? 'Add anything a sitter should know'} onPress={() => router.push('/(app)/dog/edit')} />
             <Row icon="shield" label="Pet insurance" value={`Not on file. Compare cover from ${INSURANCE_PARTNERS[0].name}`} onPress={() => Linking.openURL(INSURANCE_PARTNERS[0].url)} trailing="Compare" last />
           </GroupedList>
@@ -201,9 +203,7 @@ function Row({ icon, label, value, onPress, trailing, last }: { icon: IconName; 
   const t = useTheme();
   const inner = (
     <View style={[styles.row, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
-      <View style={[styles.rowIcon, { backgroundColor: t.surfaceStrong }]}>
-        <Icon name={icon} size={16} color={t.brand} />
-      </View>
+      <IconWell name={icon} />
       <View style={{ flex: 1, gap: 1 }}>
         <Text variant="caption" tone="tertiary">
           {label}
@@ -247,7 +247,6 @@ const styles = StyleSheet.create({
   cell: { width: CELL, height: CELL, borderRadius: radius.md },
   cellHero: { width: CELL * 2 + space.sm, height: CELL * 2 + space.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
-  rowIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   visitRow: { flexDirection: 'row', gap: space.sm },
   visitThumb: { width: 72, height: 72, borderRadius: 14 },
   visitFile: { alignItems: 'center', justifyContent: 'center' },

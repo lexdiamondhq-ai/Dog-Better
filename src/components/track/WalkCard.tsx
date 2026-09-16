@@ -1,3 +1,4 @@
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
@@ -13,6 +14,7 @@ import { humanizeError } from '@/lib/errors';
 import { REWARDS } from '@/engine/rewards';
 import { usePoints } from '@/lib/points';
 import { usePreferences } from '@/lib/preferences';
+import { takeWalkStart } from '@/lib/walkIntent';
 import { fetchRecentWalks, formatDuration, pathMetres, saveWalk, useLiveWalk, useStepsToday } from '@/lib/walks';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -42,18 +44,47 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
+  const [mapReady, setMapReady] = useState(false);
+
+  const begin = useCallback(
+    async (placeName?: string) => {
+      setError(null);
+      try {
+        await live.start({ placeName });
+      } catch (e) {
+        setError(humanizeError(e, 'Could not start the walk.'));
+      }
+    },
+    [live.start],
+  );
 
   const loadRecent = useCallback(() => fetchRecentWalks(dogId, 5).then(setRecent), [dogId]);
   useEffect(() => {
     loadRecent();
   }, [loadRecent]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const queued = takeWalkStart();
+      if (queued) void begin(queued.placeName);
+    }, [begin]),
+  );
+
   useEffect(() => {
     if (!live.walk) return;
-    const started = live.walk.startedAt.getTime();
+    const started = live.walk.startedAt instanceof Date ? live.walk.startedAt.getTime() : new Date(live.walk.startedAt).getTime();
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(id);
   }, [live.walk]);
+
+  useEffect(() => {
+    if (!live.walk?.here) {
+      setMapReady(false);
+      return;
+    }
+    const id = setTimeout(() => setMapReady(true), 350);
+    return () => clearTimeout(id);
+  }, [live.walk?.here]);
 
   const finish = async () => {
     const w = live.stop();
@@ -61,7 +92,14 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const saved = await saveWalk({ dogId, ownerId, startedAt: w.startedAt, endedAt: new Date(), steps: w.steps });
+      const saved = await saveWalk({
+        dogId,
+        ownerId,
+        startedAt: w.startedAt,
+        endedAt: new Date(),
+        steps: w.steps,
+        notes: w.placeName ?? null,
+      });
       await award({ kind: 'walk', key: `walk:${saved.id}`, dogId });
       await Promise.all([loadRecent(), today.reload()]);
     } catch (e) {
@@ -101,7 +139,7 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
 
       {live.walk ? (
         <View style={{ gap: space.sm }}>
-          {live.walk.here ? (
+          {live.walk.here && mapReady ? (
             <View style={[styles.mapWrap, { borderColor: t.border }]}>
               <MapView
                 style={styles.map}
@@ -135,7 +173,7 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
           <View style={[styles.live, { backgroundColor: t.surface }]}>
             <View style={{ flex: 1 }}>
               <Text variant="overline" tone="tertiary">
-                Walking
+                {live.walk.placeName ? live.walk.placeName : 'Walking'}
               </Text>
               <Text variant="title" style={{ fontVariant: ['tabular-nums'] }}>
                 {mm}:{ss}
@@ -153,11 +191,11 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
         </View>
       ) : null}
 
-      {today.available === false ? null : live.walk ? (
+      {live.walk ? (
         <Button label={`Finish walk  +${REWARDS.walk.points}`} icon="check" onPress={finish} loading={saving} />
-      ) : (
+      ) : today.available === false ? null : (
         <View style={{ gap: space.sm }}>
-          <Button label="Start a walk" icon="walk" kind="secondary" onPress={() => void live.start()} />
+          <Button label="Start a walk" icon="walk" kind="secondary" onPress={() => void begin()} />
           <EarnBadge points={REWARDS.walk.points} />
         </View>
       )}
@@ -174,7 +212,8 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
             <View key={w.id} style={styles.row}>
               <Text variant="bodyStrong">{w.steps.toLocaleString()} steps</Text>
               <Text variant="caption" tone="secondary">
-                {formatDuration(w.started_at, w.ended_at)} - {relativeTime(w.started_at)}
+                {formatDuration(w.started_at, w.ended_at)}
+                {w.notes ? ` · ${w.notes}` : ''} - {relativeTime(w.started_at)}
               </Text>
             </View>
           ))}

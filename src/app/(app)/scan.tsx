@@ -1,9 +1,9 @@
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeOut, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,19 +54,38 @@ export default function Scan() {
   const [barcodeDigits, setBarcodeDigits] = useState('');
   const [saved, setSaved] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const lastCode = useRef<string | null>(null);
   const locked = useRef(false);
+  const launchedScanner = useRef(false);
+  const dogRef = useRef(dog);
+  dogRef.current = dog;
 
-  const lookupCode = async (raw: string) => {
-    const code = raw.replace(/\s/g, '');
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
+      void requestPermission();
+    }
+  }, [permission, requestPermission]);
+
+  const lookupCode = useCallback(async (raw: string) => {
+    const code = raw.replace(/\D/g, '') || raw.replace(/\s/g, '');
     if (locked.current || !code || code === lastCode.current) return;
     locked.current = true;
     lastCode.current = code;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setBusy(true);
     setNotFound(null);
+    setLookupError(null);
+    if (launchedScanner.current) {
+      launchedScanner.current = false;
+      try {
+        await CameraView.dismissScanner();
+      } catch {
+        /* overlay camera stays up */
+      }
+    }
     try {
-      await CameraView.dismissScanner();
+      const current = dogRef.current;
       const p = await lookupBarcode(code);
       if (!p) {
         setNotFound(code);
@@ -75,16 +94,25 @@ export default function Scan() {
         return;
       }
       setProduct(p);
-      setReport(analyzeIngredients({ ingredientsText: p.ingredientsText, weightKg: dog?.weight_kg, kcalPer100g: p.kcalPer100g, allergies: dog?.allergies ?? [] }));
+      setReport(
+        analyzeIngredients({
+          ingredientsText: p.ingredientsText,
+          weightKg: current?.weight_kg,
+          kcalPer100g: p.kcalPer100g,
+          allergies: current?.allergies ?? [],
+        }),
+      );
       setSaved(false);
     } catch {
-      setNotFound(code);
+      setLookupError(code);
       locked.current = false;
       lastCode.current = null;
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  const paused = busy || !!product;
 
   const onScan = ({ data }: BarcodeScanningResult) => {
     void lookupCode(data);
@@ -97,15 +125,34 @@ export default function Scan() {
     return () => {
       sub.remove();
     };
-  }, [dog?.id]);
+  }, [lookupCode]);
 
   const openSystemScanner = async () => {
+    if (!CameraView.isModernBarcodeScannerAvailable) return;
     try {
-      await CameraView.launchScanner({ barcodeTypes: [...BARCODE_TYPES] });
+      launchedScanner.current = true;
+      await CameraView.launchScanner({ barcodeTypes: [...BARCODE_TYPES], isHighlightingEnabled: true, isGuidanceEnabled: true });
     } catch {
-      // Overlay camera remains the fallback.
+      launchedScanner.current = false;
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!permission?.granted || product) return;
+      if (!CameraView.isModernBarcodeScannerAvailable) return;
+      const id = setTimeout(() => {
+        void openSystemScanner();
+      }, 280);
+      return () => {
+        clearTimeout(id);
+        if (launchedScanner.current) {
+          launchedScanner.current = false;
+          void CameraView.dismissScanner().catch(() => undefined);
+        }
+      };
+    }, [permission?.granted, product]),
+  );
 
   const analyzeTyped = () => {
     if (!typed.trim()) return;

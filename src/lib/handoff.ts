@@ -1,5 +1,6 @@
 import type { Dog, FoodScan, HealthLog, WeightEntry } from '@/lib/database.types';
 import { dailyCalories } from '@/engine/foodSafety';
+import { medsLineFromNotes } from '@/engine/sheetMeds';
 import { humanize } from '@/lib/activity';
 import type { WeightUnit } from '@/lib/preferences';
 import { formatWeight, fromKg } from '@/lib/units';
@@ -19,6 +20,9 @@ export function buildHandoffSheet(dog: Dog, ownerEmail?: string | null, weightUn
     '',
     'DO NOT GIVE',
     dog.allergies?.length ? dog.allergies.map((a) => `- ${a}`).join('\n') : '- Nothing logged. Still: no grapes, onions, xylitol, chocolate, cooked bones.',
+    '',
+    'MEDICATIONS',
+    medsLineFromNotes(dog.notes) ?? '- None pulled from a visit yet. Ask the owner.',
     '',
     'GOOD TO KNOW',
     dog.notes ?? '- Ask the owner for routines and quirks.',

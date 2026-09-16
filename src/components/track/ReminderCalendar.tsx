@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
@@ -8,7 +8,7 @@ import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { kindMeta, monthDays, reminderColor, REMINDER_KINDS, useReminders, type ReminderKind } from '@/lib/reminders';
+import { kindMeta, monthDays, reminderColor, REMINDER_KINDS, useReminders, type Reminder, type ReminderKind } from '@/lib/reminders';
 import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
 
@@ -26,11 +26,35 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
   const [time, setTime] = useState('08:00');
   const [notes, setNotes] = useState('');
   const [color, setColor] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [landed, setLanded] = useState(false);
 
   const days = useMemo(() => monthDays(cursor), [cursor]);
   const onPicked = reminders.onDay(picked);
   const monthLabel = cursor.toLocaleString(undefined, { month: 'long', year: 'numeric' });
   const meta = kindMeta(kind);
+  const nextDose = reminders.nextMed;
+
+  const showDose = (r: Reminder | null) => {
+    if (!r) {
+      setFocusId(null);
+      return;
+    }
+    setPicked(r.date);
+    setFocusId(r.id);
+    const d = new Date(`${r.date}T12:00:00`);
+    if (!Number.isNaN(d.getTime())) setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
+  };
+
+  useEffect(() => {
+    if (landed || !nextDose) return;
+    showDose(nextDose);
+    setLanded(true);
+  }, [landed, nextDose]);
+
+  const markGiven = (r: Reminder) => {
+    showDose(reminders.complete(r.id, 'medication'));
+  };
 
   const save = () => {
     const label = title.trim() || meta.label;
@@ -83,6 +107,30 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
         </View>
       </Surface>
 
+      {nextDose && focusId === nextDose.id ? (
+        <Surface kind="raised" style={{ gap: space.sm }}>
+          <Text variant="overline" tone="tertiary">
+            Give this dose
+          </Text>
+          <Text variant="headline">{nextDose.title}</Text>
+          <Text variant="body" tone="secondary">
+            {nextDose.date === reminders.today ? 'Today' : nextDose.date} · {nextDose.time}
+            {nextDose.notes && !nextDose.notes.startsWith('sheet:') ? ` · ${nextDose.notes}` : ''}
+          </Text>
+          <Button label="Given. Next dose" icon="check" onPress={() => markGiven(nextDose)} />
+        </Surface>
+      ) : nextDose && nextDose.date !== picked ? (
+        <Tap onPress={() => showDose(nextDose)} haptic="selection">
+          <Text variant="caption" tone="secondary">
+            Next dose is {nextDose.title} on {nextDose.date === reminders.today ? 'today' : nextDose.date}. Jump there.
+          </Text>
+        </Tap>
+      ) : !nextDose && landed ? (
+        <Text variant="caption" tone="secondary">
+          Every dose on the calendar is given. Add the next one when the clinic writes a new sheet.
+        </Text>
+      ) : null}
+
       <View style={{ gap: space.sm }}>
         <Text variant="overline" tone="tertiary">
           {picked === reminders.today ? 'Today' : picked}
@@ -95,18 +143,37 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
           onPicked.map((r) => {
             const k = kindMeta(r.kind);
             const c = reminderColor(r);
+            const done = Boolean(r.completedAt);
+            const focused = r.id === focusId;
             return (
-              <View key={r.id} style={[styles.event, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
-                <View style={[styles.swatch, { backgroundColor: c }]}>
-                  <Icon name={k.icon} size={16} color={t.onMeaning} />
+              <View
+                key={r.id}
+                style={[
+                  styles.event,
+                  { backgroundColor: t.bgRaised, borderColor: focused ? t.brand : t.border, opacity: done ? 0.55 : 1 },
+                ]}>
+                <View style={[styles.swatch, { backgroundColor: done ? t.textTertiary : c }]}>
+                  <Icon name={done ? 'check' : k.icon} size={16} color={t.onMeaning} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text variant="bodyStrong">{r.title}</Text>
                   <Text variant="caption" tone="secondary">
-                    {r.time} · {k.label}
-                    {r.notes ? ` · ${r.notes}` : ''}
+                    {done ? 'Given' : r.time} · {k.label}
+                    {r.notes && !r.notes.startsWith('sheet:') ? ` · ${r.notes}` : ''}
                   </Text>
                 </View>
+                {r.kind === 'medication' && !done ? (
+                  <Tap onPress={() => markGiven(r)} haptic="medium" accessibilityLabel="Mark dose given">
+                    <Icon name="check" size={18} color={t.brand} />
+                  </Tap>
+                ) : null}
+                {done && r.kind === 'medication' ? (
+                  <Tap onPress={() => reminders.reopen(r.id)} haptic="selection" accessibilityLabel="Undo given">
+                    <Text variant="micro" tone="secondary">
+                      Undo
+                    </Text>
+                  </Tap>
+                ) : null}
                 <Tap onPress={() => reminders.remove(r.id)} haptic="selection" accessibilityLabel="Remove event">
                   <Icon name="trash" size={16} color={t.textTertiary} />
                 </Tap>

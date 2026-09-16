@@ -10,6 +10,7 @@ export type Bucket = 'media' | 'vault';
 export type PickedFile = { uri: string; name: string; mime: string };
 
 const IMAGE_EXT = /^(jpe?g|png|gif|webp|heic)$/i;
+const VIDEO_EXT = /^(mp4|mov|m4v|webm)$/i;
 
 export function extOf(path: string) {
   const m = path.split('?')[0].match(/\.([a-z0-9]+)$/i);
@@ -20,12 +21,21 @@ export function isImagePath(path: string) {
   return IMAGE_EXT.test(extOf(path));
 }
 
+export function isVideoPath(path: string) {
+  return VIDEO_EXT.test(extOf(path));
+}
+
 function extFromFile(name: string, mime: string) {
   const fromName = extOf(name);
   if (fromName) return fromName;
   if (mime === 'application/pdf') return 'pdf';
   if (mime.includes('wordprocessingml') || mime === 'application/msword') return mime.includes('wordprocessingml') ? 'docx' : 'doc';
   if (mime.startsWith('image/')) return mime.split('/')[1] === 'jpeg' ? 'jpg' : mime.split('/')[1];
+  if (mime.startsWith('video/')) {
+    const sub = mime.split('/')[1];
+    if (sub === 'quicktime') return 'mov';
+    return sub || 'mp4';
+  }
   return 'bin';
 }
 
@@ -88,6 +98,44 @@ export async function changeDogPhoto(dogId: string, userId: string) {
   const { error } = await supabase.from('dogs').update({ avatar_url: url }).eq('id', dogId);
   if (error) throw error;
   return url;
+}
+
+export type PickedVideo = { uri: string; durationSec: number; mime: string; name: string };
+
+const BARK_MAX_SEC = 60;
+
+function durationToSec(raw: number | null | undefined) {
+  if (raw == null || raw <= 0) return 1;
+  // ImagePicker reports milliseconds on some builds, seconds on others.
+  const sec = raw > 1000 ? raw / 1000 : raw;
+  return Math.max(1, Math.round(sec));
+}
+
+export async function pickBarkVideo(from: 'library' | 'camera'): Promise<PickedVideo | null> {
+  if (from === 'camera') {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) return null;
+  }
+  const result =
+    from === 'camera'
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ['videos'],
+          videoMaxDuration: BARK_MAX_SEC,
+          videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium ?? 0,
+          allowsEditing: false,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['videos'],
+          videoMaxDuration: BARK_MAX_SEC,
+          allowsEditing: false,
+        });
+  if (result.canceled) return null;
+  const asset = result.assets[0];
+  if (!asset?.uri) return null;
+  const durationSec = durationToSec(asset.duration);
+  if (durationSec > BARK_MAX_SEC) return null;
+  const mime = asset.mimeType ?? 'video/mp4';
+  return { uri: asset.uri, durationSec, mime, name: `bark.${extFromFile('clip.mp4', mime)}` };
 }
 
 export async function captureWithCamera(_aspect: [number, number] = [4, 5]) {

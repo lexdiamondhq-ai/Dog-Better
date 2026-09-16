@@ -44,6 +44,7 @@
         }
       ],
       "expo-apple-authentication",
+      "expo-video",
       ["expo-sensors", { "motionPermission": "Dog Better counts your steps during walks so you can see how much you and your dog moved together." }],
       [
         "expo-camera",
@@ -55,7 +56,7 @@
       ],
       [
         "expo-image-picker",
-        { "photosPermission": "Dog Better needs your photos so you can pick pictures of your dog for their profile, vault, and the pack." }
+        { "photosPermission": "Dog Better needs your photos and videos so you can pick pictures of your dog and post short Barks." }
       ],
       [
         "expo-location",

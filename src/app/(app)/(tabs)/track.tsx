@@ -4,7 +4,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { AdSlot } from '@/components/ads/AdSlot';
 import { LookOrb } from '@/components/look/LookOrb';
-import { EarnBadge } from '@/components/points/EarnBadge';
+import { TreatPocket } from '@/components/points/TreatPocket';
 import { WalkCard } from '@/components/track/WalkCard';
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
@@ -31,7 +31,7 @@ export default function Track() {
   const router = useRouter();
   const { user } = useAuth();
   const { dog, refresh } = useDogs();
-  const { award, total, today } = usePoints();
+  const { award } = usePoints();
   const a = useDogActivity(dog);
   const { weightUnit } = usePreferences();
   const reminders = useReminders(dog?.id);
@@ -69,18 +69,9 @@ export default function Track() {
   return (
     <View style={{ flex: 1 }}>
     <Screen dock refreshing={a.refreshing} onRefresh={a.refresh}>
-      <ScreenHeader title="Log" subtitle={`${dog?.name ?? 'Your dog'} · walks, food, weight, health`} />
+      <ScreenHeader title="Track" subtitle={`${dog?.name ?? 'Your dog'} · walks, food, weight, health`} />
 
-      <Tap onPress={() => router.push('/(app)/settings/points')} haptic="selection" style={[styles.jar, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
-        <Icon name="paw" size={18} color={t.accentDeep} />
-        <View style={{ flex: 1 }}>
-          <Text variant="bodyStrong">{total.toLocaleString()} treats</Text>
-          <Text variant="caption" tone="secondary">
-            {today} earned today
-          </Text>
-        </View>
-        <EarnBadge points={REWARDS.walk.points} />
-      </Tap>
+      <TreatPocket onPress={() => router.push('/(app)/settings/points')} />
 
       {dog ? (
         <Tap onPress={() => router.push('/(app)/calendar')} haptic="selection" style={[styles.cal, { backgroundColor: t.bgRaised, borderColor: t.border }]} accessibilityLabel="Open calendar">
@@ -242,7 +233,6 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 const styles = StyleSheet.create({
-  jar: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   cal: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   calIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   calDot: { width: 10, height: 10, borderRadius: 5 },

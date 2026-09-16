@@ -21,12 +21,12 @@ function minutesUntil(time: string, now: Date) {
 }
 
 /** Next real obligation. Never a meal log. If the roster is clear, Look is the aisle move. */
-export function pickDuty(input: { name: string; dueToday: Reminder[]; walksToday: number; heatF: number | null; now?: Date }): Duty {
+export function pickDuty(input: { name: string; dueToday: Reminder[]; nextMed?: Reminder | null; walksToday: number; heatF: number | null; now?: Date }): Duty {
   const now = input.now ?? new Date();
   const hour = now.getHours();
   const name = input.name;
 
-  const live = [...input.dueToday].sort((a, b) => a.time.localeCompare(b.time));
+  const live = [...input.dueToday, ...(input.nextMed && !input.dueToday.some((r) => r.id === input.nextMed?.id) ? [input.nextMed] : [])].sort((a, b) => a.time.localeCompare(b.time));
   const pressing = live.find((r) => {
     const eta = minutesUntil(r.time, now);
     return eta <= 90;
@@ -38,6 +38,9 @@ export function pickDuty(input: { name: string; dueToday: Reminder[]; walksToday
     const when = eta < 0 ? 'overdue' : eta === 0 ? 'now' : `in ${eta} min`;
     if (pressing.kind === 'medication') {
       return { line: `${pressing.title} is ${when}.`, label: `Give ${pressing.title}`, icon: 'pill', href: '/(app)/calendar' };
+    }
+    if (pressing.kind === 'meal') {
+      return { line: `${pressing.title} is ${when}.`, label: pressing.title, icon: 'meal', href: '/(app)/calendar' };
     }
     if (pressing.kind === 'walk') {
       return { line: `${name}'s walk is ${when}.`, label: eta < 0 ? 'Start a walk' : 'Open Track', icon: 'walk', href: '/(app)/(tabs)/track' };

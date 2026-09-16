@@ -9,8 +9,9 @@ import { radius, space } from '@/theme/tokens';
 type Props = {
   label: string;
   onPress?: () => void;
+  /** secondary is a brand wash, not gray. ghost is text only. accent is the one amber CTA on a screen. */
   kind?: 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent';
-  size?: 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg';
   icon?: IconName;
   loading?: boolean;
   disabled?: boolean;
@@ -21,20 +22,22 @@ export function Button({ label, onPress, kind = 'primary', size = 'md', icon, lo
   const t = useTheme();
   const bg = {
     primary: t.brand,
-    secondary: t.surfaceStrong,
+    secondary: t.brandSoft,
     ghost: 'transparent',
     danger: t.bad,
     accent: t.accent,
   }[kind];
   const fg = {
     primary: t.onBrand,
-    secondary: t.text,
+    secondary: t.brand,
     ghost: t.brand,
     danger: t.onMeaning,
     accent: t.onAccent,
   }[kind];
 
-  const height = size === 'lg' ? 58 : 48;
+  const height = { sm: 40, md: 48, lg: 58 }[size];
+  const iconSize = { sm: 16, md: 18, lg: 20 }[size];
+  const variant = size === 'lg' ? 'headline' : size === 'sm' ? 'label' : 'bodyStrong';
 
   return (
     <Tap
@@ -43,13 +46,13 @@ export function Button({ label, onPress, kind = 'primary', size = 'md', icon, lo
       haptic="medium"
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={[styles.base, { backgroundColor: bg, height, borderRadius: radius.pill }, style]}>
+      style={[styles.base, { backgroundColor: bg, height, borderRadius: radius.pill, paddingHorizontal: size === 'sm' ? space.lg : space.xl }, style]}>
       {loading ? (
         <ActivityIndicator color={fg} />
       ) : (
         <View style={styles.row}>
-          {icon ? <Icon name={icon} size={size === 'lg' ? 20 : 18} color={fg} /> : null}
-          <Text variant={size === 'lg' ? 'headline' : 'bodyStrong'} style={{ color: fg }}>
+          {icon ? <Icon name={icon} size={iconSize} color={fg} /> : null}
+          <Text variant={variant} numberOfLines={1} style={{ color: fg }}>
             {label}
           </Text>
         </View>
@@ -59,6 +62,6 @@ export function Button({ label, onPress, kind = 'primary', size = 'md', icon, lo
 }
 
 const styles = StyleSheet.create({
-  base: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xl },
+  base: { alignItems: 'center', justifyContent: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
 });

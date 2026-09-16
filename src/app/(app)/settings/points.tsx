@@ -19,7 +19,7 @@ export default function PointsSettings() {
 
   return (
     <Screen>
-      <ScreenHeader title="Treat jar" subtitle="A running tally of the useful things you do. Never taken away. Never sold." onBack={() => router.back()} large={false} />
+      <ScreenHeader title="Treat jar" subtitle="Today's pocket holds five biscuits and empties at midnight. This page keeps the lifetime tally." onBack={() => router.back()} large={false} />
 
       <Surface kind="fur" style={styles.hero}>
         <Text variant="overline" tone="tertiary">

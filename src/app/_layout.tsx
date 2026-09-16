@@ -15,6 +15,8 @@ import { PointsProvider } from '@/lib/points';
 import { PreferencesProvider } from '@/lib/preferences';
 import { CirclesProvider } from '@/lib/circles';
 import { InboxProvider } from '@/lib/inbox';
+import { RemindersProvider } from '@/lib/reminders';
+import { WalksProvider } from '@/lib/WalksProvider';
 import { LevelUp } from '@/components/points/LevelUp';
 import { PointsToast } from '@/components/points/PointsToast';
 import { ThemeProvider, useTheme } from '@/theme/ThemeProvider';
@@ -45,6 +47,8 @@ export default function RootLayout() {
               <DogsProvider>
                 <EntitlementsProvider>
                   <PointsProvider>
+                    <RemindersProvider>
+                    <WalksProvider>
                     <CirclesProvider>
                       <InboxProvider>
                         <Gate />
@@ -52,6 +56,8 @@ export default function RootLayout() {
                         <LevelUp />
                       </InboxProvider>
                     </CirclesProvider>
+                    </WalksProvider>
+                    </RemindersProvider>
                   </PointsProvider>
                 </EntitlementsProvider>
               </DogsProvider>
@@ -73,9 +79,10 @@ function Gate() {
   const { dogs, loaded } = useDogs();
   const ent = useEntitlements();
   const segments = useSegments();
-  const params = useGlobalSearchParams<{ mode?: string | string[] }>();
+  const params = useGlobalSearchParams<{ mode?: string | string[]; preview?: string | string[] }>();
   const router = useRouter();
   const addMode = (Array.isArray(params.mode) ? params.mode[0] : params.mode) === 'add';
+  const previewWelcome = (Array.isArray(params.preview) ? params.preview[0] : params.preview) === '1';
 
   const decided = ready && (!session || loaded) && ent.loaded;
 
@@ -93,6 +100,8 @@ function Gate() {
       if (!inOnboarding) router.replace('/onboarding');
     } else if (addingAnother) {
       // Household already has a dog and asked to add one. Stay on onboarding.
+    } else if (inAuth && previewWelcome) {
+      // Founder preview of the first-open welcome. Do not bounce to Today.
     } else if (inOnboarding || (inAuth && !ent.paywallSeen)) {
       // First dog just created: show the trial offer once, with Skip, before landing in the app.
       router.replace(ent.paywallSeen ? '/(app)/(tabs)/today' : { pathname: '/paywall', params: { from: 'onboarding' } });
@@ -100,7 +109,7 @@ function Gate() {
       router.replace('/(app)/(tabs)/today');
     }
     SplashScreen.hideAsync();
-  }, [decided, session, dogs.length, segments, router, ent.paywallSeen, addMode]);
+  }, [decided, session, dogs.length, segments, router, ent.paywallSeen, addMode, previewWelcome]);
 
   return (
     <>

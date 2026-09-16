@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Share, StyleSheet, View } from 'react-native';
+import { Alert, Share, StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/Button';
@@ -12,11 +12,14 @@ import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { applySheetRead } from '@/lib/applySheetRead';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
+import { useEntitlements } from '@/lib/entitlements';
 import { humanizeError } from '@/lib/errors';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
+import { readVisitSheet } from '@/lib/readVisitSheet';
 import { useReminders } from '@/lib/reminders';
 import { isImagePath } from '@/lib/media';
 import { askVetVisitSource, uploadVetVisit, useVetVisits, type VisitSource } from '@/lib/visits';
@@ -38,13 +41,16 @@ export default function CareTeam() {
   const t = useTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const { dog } = useDogs();
+  const { dog, refresh } = useDogs();
+  const { isPremium } = useEntitlements();
   const { weightUnit } = usePreferences();
   const visits = useVetVisits(dog?.id);
   const reminders = useReminders(dog?.id);
   const [copied, setCopied] = useState(false);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const sheet = dog ? buildHandoffSheet(dog, user?.email, weightUnit) : '';
@@ -79,10 +85,50 @@ export default function CareTeam() {
         });
         setTitle('');
         await visits.reload();
+        if (!isPremium) {
+          setReadNote('Saved on the profile. Premium reads the sheet for meds and dose reminders.');
+          return;
+        }
+        setReading(true);
+        const read = await readVisitSheet({ uri: saved.localUri, path: saved.storage_path, dog });
+        if (!read.found) {
+          setReadNote('Saved. No medications or meal times were on that page. Photograph the meds list if this was a PDF.');
+          return;
+        }
+        const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
+        await refresh();
+        setReadNote(summary);
+        Alert.alert('On the profile', summary);
       } catch (e) {
         setError(humanizeError(e, 'Could not save that visit.'));
       } finally {
         setBusy(false);
+        setReading(false);
+      }
+    })();
+  };
+
+  const testSample = () => {
+    if (!dog) return;
+    if (!isPremium) {
+      router.push({ pathname: '/paywall', params: { from: 'sheet-meds' } });
+      return;
+    }
+    void (async () => {
+      setBusy(true);
+      setReading(true);
+      setError(null);
+      try {
+        const read = await readVisitSheet({ sample: true, dog });
+        const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
+        await refresh();
+        setReadNote(summary);
+        Alert.alert('Sample sheet read', summary);
+      } catch (e) {
+        setError(humanizeError(e, 'Could not read the sample sheet.'));
+      } finally {
+        setBusy(false);
+        setReading(false);
       }
     })();
   };
@@ -128,12 +174,28 @@ export default function CareTeam() {
         <Surface kind="grouped" style={{ gap: space.md }}>
           <Text variant="caption" tone="secondary">
             Upload a photo or a file (PDF, visit summary, vaccine card). It lands on {dog?.name ?? 'this dog'}'s profile.
+            {isPremium
+              ? ' Premium reads the page for medications, writes them on the profile, and sets dose and meal reminders.'
+              : ' Reading the sheet for meds is Premium.'}
           </Text>
           <Field label="What was this visit" placeholder="Annual, vaccines, teeth" value={title} onChangeText={setTitle} />
           <View style={styles.actions}>
             <Button label="Photo" icon="camera" onPress={upload} loading={busy} disabled={!dog} style={{ flex: 1 }} />
             <Button label="File" icon="document" kind="secondary" onPress={uploadFile} loading={busy} disabled={!dog} style={{ flex: 1 }} />
           </View>
+          <Button
+            label={reading ? 'Reading the sheet' : isPremium ? 'Test with a sample sheet' : 'Test with a sample sheet (Premium)'}
+            icon="sparkle"
+            kind="ghost"
+            onPress={testSample}
+            loading={reading}
+            disabled={!dog || busy}
+          />
+          {readNote ? (
+            <Text variant="caption" tone="secondary">
+              {readNote}
+            </Text>
+          ) : null}
           {error ? (
             <Text variant="caption" tone="bad">
               {error}
