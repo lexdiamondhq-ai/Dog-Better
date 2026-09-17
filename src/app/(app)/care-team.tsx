@@ -108,31 +108,6 @@ export default function CareTeam() {
     })();
   };
 
-  const testSample = () => {
-    if (!dog) return;
-    if (!isPremium) {
-      router.push({ pathname: '/paywall', params: { from: 'sheet-meds' } });
-      return;
-    }
-    void (async () => {
-      setBusy(true);
-      setReading(true);
-      setError(null);
-      try {
-        const read = await readVisitSheet({ sample: true, dog });
-        const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
-        await refresh();
-        setReadNote(summary);
-        Alert.alert('Sample sheet read', summary);
-      } catch (e) {
-        setError(humanizeError(e, 'Could not read the sample sheet.'));
-      } finally {
-        setBusy(false);
-        setReading(false);
-      }
-    })();
-  };
-
   const upload = () => {
     if (!dog || !user) return;
     askVetVisitSource((from) => runUpload(from));
@@ -173,7 +148,7 @@ export default function CareTeam() {
       <Section title="Vet visits">
         <Surface kind="grouped" style={{ gap: space.md }}>
           <Text variant="caption" tone="secondary">
-            Upload a photo or a file (PDF, visit summary, vaccine card). It lands on {dog?.name ?? 'this dog'}'s profile.
+            Upload a photo or a text file (visit summary, vaccine card). It lands on {dog?.name ?? 'this dog'}&apos;s profile.
             {isPremium
               ? ' Premium reads the page for medications, writes them on the profile, and sets dose and meal reminders.'
               : ' Reading the sheet for meds is Premium.'}
@@ -183,14 +158,12 @@ export default function CareTeam() {
             <Button label="Photo" icon="camera" onPress={upload} loading={busy} disabled={!dog} style={{ flex: 1 }} />
             <Button label="File" icon="document" kind="secondary" onPress={uploadFile} loading={busy} disabled={!dog} style={{ flex: 1 }} />
           </View>
-          <Button
-            label={reading ? 'Reading the sheet' : isPremium ? 'Test with a sample sheet' : 'Test with a sample sheet (Premium)'}
-            icon="sparkle"
-            kind="ghost"
-            onPress={testSample}
-            loading={reading}
-            disabled={!dog || busy}
-          />
+          {reading ? (
+            <Text variant="caption" tone="secondary">
+              Reading the sheet for medications and meal times.
+            </Text>
+          ) : null}
+          {!isPremium ? <Button label="Unlock sheet reading with Premium" icon="sparkle" kind="ghost" onPress={() => router.push({ pathname: '/paywall', params: { from: 'sheet-meds' } })} /> : null}
           {readNote ? (
             <Text variant="caption" tone="secondary">
               {readNote}
@@ -257,7 +230,7 @@ export default function CareTeam() {
           ))}
         </Surface>
         <Text variant="caption" tone="tertiary">
-          Role-based live links, check-ins from caregivers, and one-tap incident reports are next. The sheet above works today.
+          Send the sheet to whoever has {dog?.name ?? 'your dog'} today. It is built from the profile, so it is always current.
         </Text>
       </Section>
     </Screen>

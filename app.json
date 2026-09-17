@@ -7,14 +7,25 @@
     "icon": "./assets/images/icon.png",
     "scheme": "dogbetter",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "com.dogbetter.app",
+      "buildNumber": "1",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "UIBackgroundModes": []
+      },
+      "privacyManifests": {
+        "NSPrivacyCollectedDataTypes": [
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeEmailAddress", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePhotosorVideos", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePreciseLocation", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeOtherUserContent", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypePurchaseHistory", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeProductInteraction", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAnalytics"] },
+          { "NSPrivacyCollectedDataType": "NSPrivacyCollectedDataTypeFitness", "NSPrivacyCollectedDataTypeLinked": true, "NSPrivacyCollectedDataTypeTracking": false, "NSPrivacyCollectedDataTypePurposes": ["NSPrivacyCollectedDataTypePurposeAppFunctionality"] }
+        ]
       }
     },
     "android": {
@@ -45,7 +56,7 @@
       ],
       "expo-apple-authentication",
       "expo-video",
-      ["expo-sensors", { "motionPermission": "Dog Better counts your steps during walks so you can see how much you and your dog moved together." }],
+      ["expo-notifications", { "color": "#F0A319", "defaultChannel": "reminders", "enableBackgroundRemoteNotifications": false }],
       [
         "expo-camera",
         {
@@ -60,8 +71,15 @@
       ],
       [
         "expo-location",
-        { "locationWhenInUsePermission": "Dog Better uses your location to show the walk map, and to find nearby vets, dog parks, trails, and patios." }
+        {
+          "locationWhenInUsePermission": "Dog Better uses your location to show the walk map, and to find nearby vets, dog parks, trails, and patios.",
+          "locationAlwaysAndWhenInUsePermission": false,
+          "locationAlwaysPermission": false,
+          "motionUsagePermission": "Dog Better counts your steps during walks so you can see how much you and your dog moved together.",
+          "isIosBackgroundLocationEnabled": false
+        }
       ],
+      ["expo-sensors", { "motionPermission": "Dog Better counts your steps during walks so you can see how much you and your dog moved together." }],
       "./plugins/withSpaceSafePods.js"
     ],
     "experiments": {

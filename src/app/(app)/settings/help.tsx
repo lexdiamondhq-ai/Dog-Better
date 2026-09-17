@@ -18,7 +18,7 @@ const FAQ: { section: string; items: { q: string; a: string }[] }[] = [
     items: [
       { q: 'What is the Better Score?', a: 'A 0 to 100 nudge across Nutrition, Health, Records, and Connection. Every point is explained under the bar, and the card below it tells you exactly what would add points today. It never drops because you did not log; a quiet day holds its last state.' },
       { q: 'Is this a diagnosis?', a: 'No. The symptom detective sorts urgency (watch at home, vet within 24 hours, vet now) and keeps a record you can show your vet. It never names a condition. When in doubt, call your clinic.' },
-      { q: 'Who can see my dog\u2019s data?', a: 'Only you. Photos in Profile are private. The care sheet is only shared when you send it. There is no public feed.' },
+      { q: 'Who can see my dog\u2019s data?', a: 'Records, health logs, and Profile photos are private to your account. The care sheet is only shared when you send it. Anything you post in Community or Barks is visible to other signed-in Dog Better members.' },
     ],
   },
   {
@@ -33,16 +33,16 @@ const FAQ: { section: string; items: { q: string; a: string }[] }[] = [
     section: 'Care team',
     items: [
       { q: 'What is the care sheet?', a: 'A one-page handoff built from the profile: feeding, do-not list, quirks, vet, emergency signs. Send it to a sitter, walker, or family member. It is always current because it is generated, not typed.' },
-      { q: 'Can a sitter log things too?', a: 'Not yet. Role-based links with check-ins and incident reports are on the way. Today the sheet is one direction: you to them.' },
+      { q: 'Can a sitter log things too?', a: 'The sheet is one direction: you to them. If a sitter or partner wants to log meals and walks, sign in together on their phone with your account.' },
     ],
   },
   {
     section: 'Account',
     items: [
       { q: 'How do I sign in on a new phone?', a: 'Continue with Apple or Google, or enter your email and type the 6-digit code we send. No password to remember.' },
-      { q: 'How do I export or delete my data?', a: 'Settings, Your data, Export everything gives you a file with every record. Delete account sends a request to support and we confirm by email before removing anything.' },
-      { q: 'How do I add a second dog?', a: 'Tap the dog photo on Today or Profile, then Add another dog. Settings also has a Dogs section. Each dog gets their own plan, photos, and score.' },
-      { q: 'What are Better Points?', a: 'A running tally for useful work: meals, walks, photos, tips, scans, community posts. They never drop. Settings, Better Points lists every way to earn and your recent awards.' },
+      { q: 'How do I export or delete my data?', a: 'Settings, Your data, Export everything gives you a file with every record. Settings, Account, Delete account removes your account, every dog, log, photo, and post right away. It cannot be undone.' },
+      { q: 'How do I add a second dog?', a: 'Tap the dog photo on Today or Profile, then Add another dog. Settings also has a Dogs section. One dog is free. Premium adds every dog in the house, each with their own plan, photos, and score.' },
+      { q: 'What is the treat jar?', a: 'A running tally for useful work: meals, walks, photos, tips, scans, community posts. It never drops. Settings, Treat jar lists every way to earn and your recent awards.' },
     ],
   },
 ];

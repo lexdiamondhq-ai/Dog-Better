@@ -8,7 +8,7 @@ import { supabase } from './supabase';
  * user owns, written locally and handed to the share sheet. No server round trip, no email, no wait.
  */
 export async function exportAllData(userId: string, email: string | undefined) {
-  const [dogs, meals, health, weights, scans, photos, pulses] = await Promise.all([
+  const [dogs, meals, health, weights, scans, photos, pulses, walks, posts, comments, circles] = await Promise.all([
     supabase.from('dogs').select('*').eq('owner_id', userId),
     supabase.from('meals').select('*').eq('owner_id', userId),
     supabase.from('health_logs').select('*').eq('owner_id', userId),
@@ -16,6 +16,10 @@ export async function exportAllData(userId: string, email: string | undefined) {
     supabase.from('food_scans').select('*').eq('owner_id', userId),
     supabase.from('dog_photos').select('*').eq('owner_id', userId),
     supabase.from('place_pulses').select('*').eq('user_id', userId),
+    supabase.from('walks').select('*').eq('owner_id', userId),
+    supabase.from('posts').select('*').eq('author_id', userId),
+    supabase.from('post_comments').select('*').eq('author_id', userId),
+    supabase.from('circles').select('id, name, kind, created_at').eq('owner_id', userId),
   ]);
   const payload = {
     exported_at: new Date().toISOString(),
@@ -27,7 +31,11 @@ export async function exportAllData(userId: string, email: string | undefined) {
     food_scans: scans.data ?? [],
     dog_photos: photos.data ?? [],
     place_pulses: pulses.data ?? [],
-    note: 'Photos are referenced by storage path. Request full media export from support if you need the files.',
+    walks: walks.data ?? [],
+    posts: posts.data ?? [],
+    post_comments: comments.data ?? [],
+    circles: circles.data ?? [],
+    note: 'Photos and videos are referenced by storage path. Email support@dogbetter.app for a copy of the files themselves.',
   };
   const dir = new Directory(Paths.cache, 'exports');
   if (!dir.exists) dir.create();

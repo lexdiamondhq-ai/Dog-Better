@@ -4,6 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { palette } from '@/theme/tokens';
 import type { IconName } from '@/components/ui/Icon';
 
+import { useDogs } from './dogs';
+import { syncReminderNotifications } from './notify';
+import { usePreferences } from './preferences';
+
 export type ReminderKind = 'treat' | 'medication' | 'meal' | 'walk' | 'groom' | 'vet' | 'vaccine' | 'training' | 'boarding' | 'birthday' | 'other';
 
 export type Reminder = {
@@ -88,13 +92,17 @@ const Ctx = createContext<Store | null>(null);
 
 export function RemindersProvider({ children }: PropsWithChildren) {
   const [all, setAll] = useState<Reminder[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+  const { notifications, loaded: prefsLoaded } = usePreferences();
+  const { dogs } = useDogs();
 
   useEffect(() => {
     AsyncStorage.getItem(KEY)
       .then((raw) => {
         if (raw) setAll(JSON.parse(raw) as Reminder[]);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setHydrated(true));
   }, []);
 
   const persist = useCallback((updater: (prev: Reminder[]) => Reminder[]) => {
@@ -104,6 +112,15 @@ export function RemindersProvider({ children }: PropsWithChildren) {
       return next;
     });
   }, []);
+
+  // The calendar is the source of truth; the phone's notification queue mirrors it. Debounced so a
+  // sheet read that adds eighty doses schedules once.
+  useEffect(() => {
+    if (!hydrated || !prefsLoaded) return;
+    const names = new Map(dogs.map((d) => [d.id, d.name]));
+    const id = setTimeout(() => void syncReminderNotifications(all, notifications, names), 800);
+    return () => clearTimeout(id);
+  }, [all, notifications, dogs, hydrated, prefsLoaded]);
 
   const value = useMemo(() => ({ all, persist }), [all, persist]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

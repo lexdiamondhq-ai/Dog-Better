@@ -12,6 +12,7 @@ import { Screen, ScreenHeader } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
@@ -43,8 +44,9 @@ export default function NewPost() {
     setError(null);
     try {
       const image_path = uri ? await uploadImage({ bucket: 'media', userId: user.id, folder: 'posts', uri }) : null;
-      const { error: err } = await supabase.from('posts').insert({ author_id: user.id, dog_id: dog?.id ?? null, caption: caption.trim() || null, image_path, circle_id: circleId || null });
+      const { error: err } = await supabase.from('posts').insert({ author_id: user.id, dog_id: dog?.id ?? null, caption: caption.trim() || null, image_path, circle_id: circleId || null, kind: 'photo' });
       if (err) throw err;
+      void track('post_created', { kind: 'photo', circle: Boolean(circleId) });
       await award({ kind: 'post', key: `post:${user.id}:${Date.now()}`, dogId: dog?.id });
       router.back();
     } catch (e) {

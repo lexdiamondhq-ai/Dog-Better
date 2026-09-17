@@ -1,8 +1,10 @@
 import type { Dog } from '@/lib/database.types';
-import { AMAZON_TAG, SHOP_LINKS, type ShopLink } from '@/content/partners';
+import { AMAZON_APP_APPROVED, AMAZON_TAG, SHOP_LINKS, type ShopLink } from '@/content/partners';
 
+/** Amazon search for a query. The Associates tag rides along only once the app is an Approved Mobile Application. */
 export function amazonSearch(query: string) {
-  return `https://www.amazon.com/s?k=${encodeURIComponent(query)}&tag=${AMAZON_TAG}`;
+  const base = `https://www.amazon.com/s?k=${encodeURIComponent(query)}`;
+  return AMAZON_APP_APPROVED ? `${base}&tag=${AMAZON_TAG}` : base;
 }
 
 export function sizeBand(weightKg: number | null | undefined): ShopLink['size'] {

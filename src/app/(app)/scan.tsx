@@ -15,7 +15,10 @@ import { Icon, type IconName } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { analyzeIngredients, type SafetyReport, type Verdict } from '@/engine/foodSafety';
+import { AFFILIATE_DISCLOSURE } from '@/content/partners';
+import { analyzeIngredients, servingKcal, type SafetyReport, type Verdict } from '@/engine/foodSafety';
+import { useDogActivity } from '@/lib/activity';
+import { track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
@@ -29,6 +32,8 @@ import { radius, space } from '@/theme/tokens';
 type Mode = 'scan' | 'type';
 
 const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39', 'code93', 'itf14', 'codabar'] as const;
+/** ASPCA Animal Poison Control Center, 24/7. */
+const POISON_CONTROL = '8884264435';
 
 /**
  * The viewfinder is the whole screen. A scan line sweeps the frame; the moment a
@@ -41,6 +46,7 @@ export default function Scan() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { dog } = useDogs();
+  const activity = useDogActivity(dog);
   const { award } = usePoints();
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -55,11 +61,15 @@ export default function Scan() {
   const [saved, setSaved] = useState(false);
   const [cameraKey, setCameraKey] = useState(0);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [pieces, setPieces] = useState(1);
+  const [gramsEach, setGramsEach] = useState('5');
   const lastCode = useRef<string | null>(null);
   const locked = useRef(false);
   const launchedScanner = useRef(false);
   const dogRef = useRef(dog);
-  dogRef.current = dog;
+  useEffect(() => {
+    dogRef.current = dog;
+  }, [dog]);
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
@@ -94,6 +104,8 @@ export default function Scan() {
         return;
       }
       setProduct(p);
+      setPieces(1);
+      setGramsEach('5');
       setReport(
         analyzeIngredients({
           ingredientsText: p.ingredientsText,
@@ -103,6 +115,7 @@ export default function Scan() {
         }),
       );
       setSaved(false);
+      void track('scan_complete', { found: true });
     } catch {
       setLookupError(code);
       locked.current = false;
@@ -111,8 +124,6 @@ export default function Scan() {
       setBusy(false);
     }
   }, []);
-
-  const paused = busy || !!product;
 
   const onScan = ({ data }: BarcodeScanningResult) => {
     void lookupCode(data);
@@ -139,25 +150,21 @@ export default function Scan() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!permission?.granted || product) return;
-      if (!CameraView.isModernBarcodeScannerAvailable) return;
-      const id = setTimeout(() => {
-        void openSystemScanner();
-      }, 280);
       return () => {
-        clearTimeout(id);
         if (launchedScanner.current) {
           launchedScanner.current = false;
           void CameraView.dismissScanner().catch(() => undefined);
         }
       };
-    }, [permission?.granted, product]),
+    }, []),
   );
 
   const analyzeTyped = () => {
     if (!typed.trim()) return;
     Keyboard.dismiss();
     setProduct({ barcode: '', name: typedName.trim() || 'Typed ingredients', brand: null, ingredientsText: typed, kcalPer100g: null, image: null });
+    setPieces(1);
+    setGramsEach('5');
     setReport(analyzeIngredients({ ingredientsText: typed, weightKg: dog?.weight_kg, allergies: dog?.allergies ?? [] }));
     setSaved(false);
   };
@@ -169,6 +176,8 @@ export default function Scan() {
     setNotFound(null);
     setSaved(false);
     setBarcodeDigits('');
+    setPieces(1);
+    setGramsEach('5');
     locked.current = false;
     lastCode.current = null;
   };
@@ -178,6 +187,11 @@ export default function Scan() {
     setMode('scan');
     setCameraKey((k) => k + 1);
   };
+
+  const grams = Math.max(0, pieces * (Number.parseInt(gramsEach, 10) || 0));
+  const thisKcal = servingKcal(product?.kcalPer100g, grams);
+  const leftover =
+    report?.treatBudgetKcal != null ? report.treatBudgetKcal - activity.treatKcalToday - (thisKcal ?? 0) : null;
 
   const save = async () => {
     if (!user || !dog || !product || !report) return;
@@ -190,7 +204,17 @@ export default function Scan() {
       verdict: report.verdict,
       flagged: report.flags.map((f) => ({ id: f.id, label: f.label, level: f.level })),
     });
+    if (report.verdict !== 'danger') {
+      await supabase.from('meals').insert({
+        dog_id: dog.id,
+        owner_id: user.id,
+        kind: 'treat',
+        label: `${pieces} ${pieces === 1 ? 'piece' : 'pieces'} · ${product.name ?? 'treat'}`,
+        calories: thisKcal,
+      });
+    }
     await award({ kind: 'scan', key: `scan:${dog.id}:${product.barcode || product.name}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
+    await activity.reload();
     setSaved(true);
   };
 
@@ -277,6 +301,26 @@ export default function Scan() {
         </KeyboardAvoidingView>
       ) : null}
 
+      {lookupError && !product && !notFound ? (
+        <Animated.View entering={FadeInUp} exiting={FadeOut} style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
+          <Surface kind="raised" radiusSize="xl" style={{ gap: space.md }}>
+            <View style={styles.row}>
+              <Icon name="warning" size={20} color={t.warn} />
+              <Text variant="headline" style={{ flex: 1 }}>
+                Could not reach the database
+              </Text>
+            </View>
+            <Text variant="body" tone="secondary">
+              Barcode {lookupError} could not be looked up right now. Check your connection, or type the ingredients from the label.
+            </Text>
+            <View style={styles.row}>
+              <Button label="Try again" onPress={() => void lookupCode(lookupError)} style={{ flex: 1 }} />
+              <Button label="Type ingredients" kind="secondary" icon="edit" onPress={() => setMode('type')} />
+            </View>
+          </Surface>
+        </Animated.View>
+      ) : null}
+
       {notFound && !product ? (
         <Animated.View entering={FadeInUp} exiting={FadeOut} style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
           <Surface kind="raised" radiusSize="xl" style={{ gap: space.md }}>
@@ -355,10 +399,51 @@ export default function Scan() {
                 </View>
               ) : null}
 
-              {report.verdict !== 'danger' && dog?.weight_kg ? (
-                <View style={styles.stats}>
-                  <Stat label="Daily treat budget" value={report.treatBudgetKcal ? `${report.treatBudgetKcal} kcal` : '-'} />
-                  <Stat label="Of this, at most" value={report.budgetGrams ? `${report.budgetGrams} g` : 'Unknown kcal'} />
+              {report.verdict !== 'danger' ? (
+                <View style={{ gap: space.sm }}>
+                  <Text variant="overline" tone="tertiary">
+                    How much did they get?
+                  </Text>
+                  <View style={styles.row}>
+                    <Tap
+                      haptic="selection"
+                      onPress={() => setPieces((n) => Math.max(1, n - 1))}
+                      style={[styles.step, { backgroundColor: t.surface }]}
+                      accessibilityLabel="Fewer pieces">
+                      <Text variant="headline">-</Text>
+                    </Tap>
+                    <Text variant="headline" style={{ minWidth: 72, textAlign: 'center' }}>
+                      {pieces} {pieces === 1 ? 'piece' : 'pieces'}
+                    </Text>
+                    <Tap
+                      haptic="selection"
+                      onPress={() => setPieces((n) => Math.min(30, n + 1))}
+                      style={[styles.step, { backgroundColor: t.surface }]}
+                      accessibilityLabel="More pieces">
+                      <Text variant="headline">+</Text>
+                    </Tap>
+                  </View>
+                  <Field
+                    label="Grams each"
+                    hint="Weigh one piece if the bag does not say. Training treats are often 3 to 6 g."
+                    value={gramsEach}
+                    onChangeText={setGramsEach}
+                    keyboardType="number-pad"
+                    suffix="g"
+                  />
+                  <View style={styles.stats}>
+                    <Stat label="This serving" value={thisKcal ? `${thisKcal} kcal` : product.kcalPer100g ? '0 kcal' : 'Unknown'} />
+                    <Stat label="Treat budget left" value={leftover == null ? '-' : leftover < 0 ? `Over ${Math.abs(leftover)}` : `${leftover} kcal`} />
+                  </View>
+                  {report.budgetGrams ? (
+                    <Text variant="caption" tone="tertiary">
+                      Daily treat budget is {report.treatBudgetKcal} kcal, about {report.budgetGrams} g of this bag.
+                    </Text>
+                  ) : product.kcalPer100g ? null : (
+                    <Text variant="caption" tone="tertiary">
+                      This bag has no public calorie number. We still log the pieces.
+                    </Text>
+                  )}
                 </View>
               ) : null}
 
@@ -373,19 +458,53 @@ export default function Scan() {
                 </View>
               ) : null}
 
-              <Button
-                label={report.verdict === 'danger' || report.verdict === 'caution' ? 'Shop a safer option' : 'Buy this on Amazon'}
-                icon="link"
-                kind="ghost"
-                onPress={() =>
-                  Linking.openURL(
-                    amazonSearch(report.verdict === 'danger' || report.verdict === 'caution' ? 'dog treats no xylitol no grapes' : product.name || product.brand || 'dog treats'),
-                  )
-                }
-              />
+              {report.verdict === 'danger' ? (
+                <View style={[styles.flag, { backgroundColor: t.surface }]}>
+                  <Icon name="phone" size={18} color={t.bad} />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text variant="bodyStrong">Already ate it?</Text>
+                    <Text variant="caption" tone="secondary">
+                      Call your vet, or ASPCA Animal Poison Control (a fee may apply). Do not wait for symptoms.
+                    </Text>
+                  </View>
+                  <Button label="Call ASPCA" kind="danger" size="sm" onPress={() => Linking.openURL(`tel:${POISON_CONTROL}`)} />
+                </View>
+              ) : null}
+
+              <View style={{ gap: space.xs }}>
+                <Button
+                  label={report.verdict === 'danger' || report.verdict === 'caution' ? 'Shop a safer option' : 'Buy this on Amazon'}
+                  icon="link"
+                  kind="ghost"
+                  onPress={() => {
+                    void track('scan_shop_click', { verdict: report.verdict });
+                    void Linking.openURL(
+                      amazonSearch(report.verdict === 'danger' || report.verdict === 'caution' ? 'dog treats no xylitol no grapes' : product.name || product.brand || 'dog treats'),
+                    );
+                  }}
+                />
+                <Text variant="micro" tone="tertiary" align="center">
+                  {AFFILIATE_DISCLOSURE}
+                </Text>
+              </View>
 
               <View style={styles.row}>
-                <Button label={saved ? 'Saved' : `Save scan  +${REWARDS.scan.points}`} icon={saved ? 'check' : 'plus'} kind={saved ? 'secondary' : 'primary'} disabled={saved} onPress={save} style={{ flex: 1 }} />
+                <Button
+                  label={
+                    saved
+                      ? 'Saved'
+                      : report.verdict === 'danger'
+                        ? `Save scan  +${REWARDS.scan.points}`
+                        : thisKcal
+                          ? `Log ${thisKcal} kcal  +${REWARDS.scan.points}`
+                          : `Log treat  +${REWARDS.scan.points}`
+                  }
+                  icon={saved ? 'check' : 'plus'}
+                  kind={saved ? 'secondary' : 'primary'}
+                  disabled={saved}
+                  onPress={save}
+                  style={{ flex: 1 }}
+                />
                 <Button label="Scan another" kind="secondary" icon="scan" onPress={goScan} />
               </View>
             </ScrollView>
@@ -492,4 +611,5 @@ const styles = StyleSheet.create({
   banner: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.lg, borderRadius: radius.lg },
   flag: { flexDirection: 'row', alignItems: 'flex-start', gap: space.sm, padding: space.md, borderRadius: radius.md },
   stats: { flexDirection: 'row', gap: space.sm },
+  step: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

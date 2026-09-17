@@ -18,7 +18,8 @@ import { Text } from '@/components/ui/Text';
 import { useAuth } from '@/lib/auth';
 import { circleLabel, useCircles, type CircleTab } from '@/lib/circles';
 import { useInbox } from '@/lib/inbox';
-import { useFeed } from '@/lib/pack';
+import { moderationSheet } from '@/lib/moderation';
+import { useFeed, type FeedPost } from '@/lib/pack';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
 
@@ -40,14 +41,17 @@ export default function Community() {
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
 
+  const ensureStarter = circles.ensureStarter;
+  const reloadFeed = feed.reload;
+
   useEffect(() => {
-    void circles.ensureStarter();
-  }, [circles.ensureStarter]);
+    void ensureStarter();
+  }, [ensureStarter]);
 
   useFocusEffect(
     useCallback(() => {
-      void feed.reload();
-    }, [feed.reload]),
+      void reloadFeed();
+    }, [reloadFeed]),
   );
 
   const goPost = (seed?: string) => {
@@ -83,11 +87,23 @@ export default function Community() {
     setComposer(null);
   };
 
-  const remove = (id: string) => {
+  const remove = (post: FeedPost) => {
     Alert.alert('Delete this post?', 'It leaves this circle. Comments go with it.', [
       { text: 'Keep it', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => void feed.remove(feed.posts.find((p) => p.id === id)!) },
+      { text: 'Delete', style: 'destructive', onPress: () => void feed.remove(post) },
     ]);
+  };
+
+  const report = (post: FeedPost) => {
+    if (!user) return;
+    moderationSheet({
+      reporterId: user.id,
+      targetKind: 'post',
+      targetId: post.id,
+      authorId: post.author_id,
+      authorLabel: post.author?.display_name ?? undefined,
+      onDone: () => feed.hide(post.id),
+    });
   };
 
   return (
@@ -186,7 +202,8 @@ export default function Community() {
               index={i}
               onLike={() => feed.like(p)}
               onOpen={() => router.push({ pathname: '/(app)/post/[id]', params: { id: p.id } })}
-              onDelete={user && p.author_id === user.id ? () => remove(p.id) : undefined}
+              onDelete={user && p.author_id === user.id ? () => remove(p) : undefined}
+              onReport={user && p.author_id !== user.id ? () => report(p) : undefined}
             />,
             ...(i === 1 ? [<AdSlot key="ad" placement="community" />] : []),
           ])

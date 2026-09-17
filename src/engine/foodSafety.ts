@@ -202,6 +202,12 @@ export function dailyCalories(weightKg: number) {
   return Math.round(70 * Math.pow(weightKg, 0.75) * 1.6);
 }
 
+/** Calories in a serving when the bag lists kcal per 100 g. */
+export function servingKcal(kcalPer100g: number | null | undefined, grams: number) {
+  if (!kcalPer100g || kcalPer100g <= 0 || grams <= 0) return null;
+  return Math.max(1, Math.round((kcalPer100g * grams) / 100));
+}
+
 export function analyzeIngredients(opts: {
   ingredientsText: string | null | undefined;
   weightKg?: number | null;

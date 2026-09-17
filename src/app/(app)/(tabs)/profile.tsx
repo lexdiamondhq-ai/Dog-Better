@@ -11,10 +11,10 @@ import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { GroupedList, Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { INSURANCE_PARTNERS } from '@/content/partners';
 import { medsLineFromNotes } from '@/engine/sheetMeds';
 import { useAuth } from '@/lib/auth';
-import { ADD_DOG_HREF, dogAgeLabel, useDogs } from '@/lib/dogs';
+import { dogAgeLabel, useDogs } from '@/lib/dogs';
+import { usePremiumGate } from '@/lib/gates';
 import { changeDogPhoto, isImagePath } from '@/lib/media';
 import { usePoints } from '@/lib/points';
 import { usePreferences } from '@/lib/preferences';
@@ -36,6 +36,7 @@ export default function Profile() {
   const visits = useVetVisits(dog?.id);
   const { total } = usePoints();
   const { weightUnit } = usePreferences();
+  const gate = usePremiumGate();
 
   const age = dogAgeLabel(dog?.birthdate ?? null);
   const [changingPhoto, setChangingPhoto] = useState(false);
@@ -89,7 +90,7 @@ export default function Profile() {
               </Text>
             </Tap>
           ))}
-          <Tap onPress={() => router.push(ADD_DOG_HREF)} haptic="medium" style={[styles.dogChip, { backgroundColor: t.furLight }]}>
+          <Tap onPress={gate.openAddDog} haptic="medium" style={[styles.dogChip, { backgroundColor: t.furLight }]} accessibilityLabel="Add a dog">
             <Icon name="plus" size={16} color={t.brand} />
             <Text variant="label" tone="brand">
               Add a dog
@@ -97,7 +98,7 @@ export default function Profile() {
           </Tap>
         </View>
         <Text variant="caption" tone="tertiary">
-          One profile per dog. Plans and photos never mix.
+          {gate.allows('multi_dog') ? 'One profile per dog. Plans and photos never mix.' : 'One dog is free. Premium adds every dog in the house, each with their own plan and photos.'}
         </Text>
       </Section>
 
@@ -163,8 +164,7 @@ export default function Profile() {
             <Row icon="shield" label="Microchip" value={dog?.microchip ?? 'Not set'} onPress={() => router.push('/(app)/dog/edit')} />
             <Row icon="warning" label="Allergies" value={dog?.allergies?.length ? dog.allergies.join(', ') : 'None known'} onPress={() => router.push('/(app)/dog/edit')} />
             <Row icon="pill" label="Medications" value={medsLineFromNotes(dog?.notes ?? null) ?? 'Upload a visit on the care sheet'} onPress={() => router.push('/(app)/care-team')} />
-            <Row icon="info" label="Notes" value={dog?.notes ?? 'Add anything a sitter should know'} onPress={() => router.push('/(app)/dog/edit')} />
-            <Row icon="shield" label="Pet insurance" value={`Not on file. Compare cover from ${INSURANCE_PARTNERS[0].name}`} onPress={() => Linking.openURL(INSURANCE_PARTNERS[0].url)} trailing="Compare" last />
+            <Row icon="info" label="Notes" value={dog?.notes ?? 'Add anything a sitter should know'} onPress={() => router.push('/(app)/dog/edit')} last />
           </GroupedList>
         </Animated.View>
         {visits.visits.length ? (
@@ -182,14 +182,11 @@ export default function Profile() {
             ))}
           </View>
         ) : null}
-        <Text variant="caption" tone="tertiary">
-          {INSURANCE_PARTNERS[0].disclosure}
-        </Text>
       </Section>
 
       <Section title="Account">
         <GroupedList>
-          <Row icon="plus" label="Add another dog" value="Each dog gets their own profile and plan" onPress={() => router.push(ADD_DOG_HREF)} />
+          <Row icon="plus" label="Add another dog" value={gate.allows('multi_dog') ? 'Each dog gets their own profile and plan' : 'Every dog in the house is part of Premium'} onPress={gate.openAddDog} />
           <Row icon="settings" label="Settings" value="Notifications, appearance, help, privacy, account" onPress={() => router.push('/(app)/settings')} />
           <Row icon="person" label="Signed in" value={user?.email ?? ''} last />
         </GroupedList>

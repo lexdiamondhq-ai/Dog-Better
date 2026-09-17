@@ -94,7 +94,7 @@ export function OnboardingMascot({ pose: locked, cycle = false, size = 'sm', lab
     x.value = withTiming(0, { duration: 280 });
     y.value = withSpring(size === 'lg' ? 16 : 10, { damping: 14, stiffness: 90 });
     scale.value = withSpring(0.96, { damping: 14, stiffness: 90 });
-  }, [pose, size]);
+  }, [pose, size, x, y, scale, bark, rot]);
 
   const dogStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: x.value }, { translateY: y.value }, { rotate: `${rot.value}deg` }, { scale: scale.value }],

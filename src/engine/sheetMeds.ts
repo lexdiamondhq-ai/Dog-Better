@@ -19,7 +19,7 @@ export type SheetRead = {
   medications: SheetMed[];
   meals: SheetMeal[];
   found: boolean;
-  source: 'ai' | 'local' | 'sample';
+  source: 'ai' | 'local';
 };
 
 const MAX_DAYS = 14;
@@ -74,16 +74,22 @@ export function normalizeTime(raw: string | undefined) {
   return `${String(h).padStart(2, '0')}:${hm[2]}`;
 }
 
-/** Pull doses from plain clinic text when the model is offline or this is the sample sheet. */
+const NOT_A_DRUG = /^(patient|discharge|feeding|notes?|give|do|take|recheck|return|call|monitor|watch|keep|apply|clean|continue|start|stop|then|with|food|water|daily|every|morning|evening|night|breakfast|dinner|lunch|dose|doses|tablet|tablets|capsule|capsules|mg|ml|the|and|for|per|once|twice|three|days?|weeks?)$/i;
+
+/**
+ * Pull doses from plain clinic text when the model is unavailable. Deliberately conservative: a
+ * line must carry a dose unit or an explicit dosing verb, and the candidate name must not be a
+ * common instruction word. Missing a med is recoverable; inventing one is not.
+ */
 export function localReadSheet(text: string, source: SheetRead['source'] = 'local'): SheetRead {
   const medications: SheetMed[] = [];
   const lines = text.split(/\n+/);
   for (const line of lines) {
-    const med = line.match(/(?:^\s*\d+[.)]\s*)?([A-Za-z][A-Za-z0-9/-]{2,})\s+(\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b)?/i);
+    const med = line.match(/(?:^\s*\d+[.)]\s*)?([A-Za-z][A-Za-z0-9/-]{3,})\s+(\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b)/i);
     if (!med) continue;
-    if (!/tablet|capsule|give|mouth|mg|mcg|every|daily|dose/i.test(line)) continue;
+    if (!/tablet|capsule|give|by mouth|orally|every|daily|twice|once|dose/i.test(line)) continue;
     const name = med[1];
-    if (/patient|discharge|feeding|notes|give|do/i.test(name)) continue;
+    if (NOT_A_DRUG.test(name)) continue;
     medications.push({
       name,
       dose: med[2]?.trim() || null,

@@ -105,7 +105,7 @@ export default function Track() {
           <View style={styles.statRow}>
             <Stat label="Daily target" value={kcal ? `${kcal}` : '--'} unit="kcal" />
             <Stat label="Treat budget" value={treatBudget ? `${treatBudget}` : '--'} unit="kcal" />
-            <Stat label="Meals today" value={`${a.mealsToday.length}`} unit="logged" />
+            <Stat label="Treats today" value={treatBudget ? `${a.treatKcalToday}` : `${a.treatKcalToday || '--'}`} unit="kcal logged" />
           </View>
           <Text variant="caption" tone="tertiary">
             {weightKg ? `Resting energy at ${weightLabel}. Puppies, working dogs, and seniors differ.` : 'Log a weight to unlock calories.'}

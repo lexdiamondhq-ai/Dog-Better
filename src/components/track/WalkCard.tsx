@@ -46,16 +46,17 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
   const [elapsed, setElapsed] = useState(0);
   const [mapReady, setMapReady] = useState(false);
 
+  const startLive = live.start;
   const begin = useCallback(
     async (placeName?: string) => {
       setError(null);
       try {
-        await live.start({ placeName });
+        await startLive({ placeName });
       } catch (e) {
         setError(humanizeError(e, 'Could not start the walk.'));
       }
     },
-    [live.start],
+    [startLive],
   );
 
   const loadRecent = useCallback(() => fetchRecentWalks(dogId, 5).then(setRecent), [dogId]);
@@ -77,14 +78,16 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
     return () => clearInterval(id);
   }, [live.walk]);
 
+  // The map mounts a beat after the first fix so the card does not flash an empty tile.
+  const hasFix = Boolean(live.walk?.here);
   useEffect(() => {
-    if (!live.walk?.here) {
-      setMapReady(false);
-      return;
-    }
+    if (!hasFix) return;
     const id = setTimeout(() => setMapReady(true), 350);
-    return () => clearTimeout(id);
-  }, [live.walk?.here]);
+    return () => {
+      clearTimeout(id);
+      setMapReady(false);
+    };
+  }, [hasFix]);
 
   const finish = async () => {
     const w = live.stop();

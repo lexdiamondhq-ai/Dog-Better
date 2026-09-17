@@ -7,6 +7,7 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { pickAdSpot, type AdPlacement } from '@/content/adSpots';
 import type { Tip } from '@/engine/guidance';
+import { track } from '@/lib/analytics';
 import { useEntitlements } from '@/lib/entitlements';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -35,6 +36,7 @@ export function AdSlot({
   const spot = pickAdSpot(key, topic);
 
   const open = () => {
+    void track('shop_click', { placement, spot: spot.id });
     if (spot.open.kind === 'shop') router.push('/(app)/shop');
     else void Linking.openURL(spot.open.url);
   };

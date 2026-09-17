@@ -44,13 +44,48 @@ export async function uploadImage(opts: { bucket: Bucket; userId: string; folder
   return uploadVaultFile({ bucket: opts.bucket, userId: opts.userId, folder: opts.folder, uri: opts.uri, name: 'photo.jpg', mime: 'image/jpeg' });
 }
 
+/** Matches the bucket caps set in the launch_hardening migration so the user hears about it before the upload starts. */
+export const MAX_UPLOAD_BYTES: Record<Bucket, number> = { media: 50 * 1024 * 1024, vault: 25 * 1024 * 1024 };
+
+export class FileTooLargeError extends Error {
+  constructor(public readonly bytes: number, public readonly limit: number) {
+    super(`That file is ${Math.round(bytes / 1048576)} MB. The limit is ${Math.round(limit / 1048576)} MB.`);
+  }
+}
+
 export async function uploadVaultFile(opts: { bucket: Bucket; userId: string; folder: string; uri: string; name: string; mime: string }) {
-  const bytes = await readLocalBytes(opts.uri);
   const ext = extFromFile(opts.name, opts.mime);
   const path = `${opts.userId}/${opts.folder}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from(opts.bucket).upload(path, bytes, { contentType: opts.mime || 'application/octet-stream', upsert: false });
+  const size = await localSize(opts.uri);
+  const limit = MAX_UPLOAD_BYTES[opts.bucket];
+  if (size != null && size > limit) throw new FileTooLargeError(size, limit);
+
+  // Videos stream from disk as multipart so a 60-second clip never sits in the JS heap.
+  const body = opts.mime.startsWith('video/') ? formDataFor(opts.uri, `${Date.now()}.${ext}`, opts.mime) : await readLocalBytes(opts.uri);
+  const { error } = await supabase.storage.from(opts.bucket).upload(path, body, { contentType: opts.mime || 'application/octet-stream', upsert: false });
   if (error) throw error;
   return path;
+}
+
+function formDataFor(uri: string, name: string, type: string) {
+  const form = new FormData();
+  // React Native's fetch accepts a file descriptor object here and streams it.
+  form.append('file', { uri, name, type } as unknown as Blob);
+  return form;
+}
+
+async function localSize(uri: string): Promise<number | null> {
+  try {
+    const f = new File(uri);
+    return f.exists ? f.size ?? null : null;
+  } catch {
+    try {
+      const info = await FileSystem.getInfoAsync(uri);
+      return info.exists && 'size' in info ? info.size : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
 export async function pickVisitFile(): Promise<PickedFile | null> {
@@ -128,6 +163,8 @@ export async function pickBarkVideo(from: 'library' | 'camera'): Promise<PickedV
           mediaTypes: ['videos'],
           videoMaxDuration: BARK_MAX_SEC,
           allowsEditing: false,
+          // Library clips can be 4K originals; ask iOS to transcode to a phone-sized 720p export.
+          videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
         });
   if (result.canceled) return null;
   const asset = result.assets[0];

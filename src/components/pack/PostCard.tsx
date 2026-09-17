@@ -13,13 +13,14 @@ import { publicMediaUrl } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
 
-type Props = { post: FeedPost; index?: number; onLike: () => void; onOpen: () => void; onDelete?: () => void };
+type Props = { post: FeedPost; index?: number; onLike: () => void; onOpen: () => void; onDelete?: () => void; onReport?: () => void };
 
 /**
  * A photo-first card. Who and which dog float over the image on a scrim, so the
- * picture stays the hero and the metadata never pushes it around.
+ * picture stays the hero and the metadata never pushes it around. Every card someone else posted
+ * carries a report action; the author sees delete instead.
  */
-export function PostCard({ post, index = 0, onLike, onOpen, onDelete }: Props) {
+export function PostCard({ post, index = 0, onLike, onOpen, onDelete, onReport }: Props) {
   const t = useTheme();
   const image = publicMediaUrl(post.image_path);
   const note = post.caption?.trim();
@@ -70,6 +71,10 @@ export function PostCard({ post, index = 0, onLike, onOpen, onDelete }: Props) {
           {onDelete ? (
             <Tap onPress={onDelete} haptic="medium" style={styles.action} accessibilityLabel="Delete post">
               <Icon name="trash" size={18} color={t.bad} />
+            </Tap>
+          ) : onReport ? (
+            <Tap onPress={onReport} haptic="selection" style={styles.action} accessibilityLabel="Report or block">
+              <Icon name="warning" size={18} color={t.textTertiary} />
             </Tap>
           ) : null}
           <Text variant="caption" tone="tertiary" style={{ marginLeft: 'auto' }}>

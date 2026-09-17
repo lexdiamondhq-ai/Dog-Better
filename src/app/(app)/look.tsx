@@ -14,10 +14,9 @@ import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { track } from '@/lib/analytics';
 import { useDogs } from '@/lib/dogs';
-import { useEntitlements } from '@/lib/entitlements';
 import { LOOK_FOCUSES, lookAtPhoto, type LookFocus, type LookResult } from '@/lib/look';
-import { takeLookSlot } from '@/lib/looks';
 import { pickFromLibrary } from '@/lib/media';
 import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
@@ -27,7 +26,6 @@ export default function LookScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { dog } = useDogs();
-  const { isPremium } = useEntitlements();
   const [permission, requestPermission] = useCameraPermissions();
   const cam = useRef<CameraView>(null);
 
@@ -43,19 +41,21 @@ export default function LookScreen() {
     }
   }, [permission, requestPermission]);
 
-  const apply = async (next: string | null) => {
-    if (!next) return;
-    const slot = await takeLookSlot(isPremium);
-    if (!slot.ok) {
-      router.push({ pathname: '/paywall', params: { from: 'look' } });
-      return;
-    }
-    setUri(next);
-    setResult(null);
+  /** The server owns the free quota. A quota answer still shows the checklist, then offers Premium. */
+  const run = async (photoUri: string, at: LookFocus) => {
     setBusy(true);
-    const looked = await lookAtPhoto(next, focus, dog);
+    const looked = await lookAtPhoto(photoUri, at, dog);
     setResult(looked);
     setBusy(false);
+    void track('look_run', { focus: at, source: looked.source, reason: looked.reason ?? null });
+    if (looked.reason === 'quota') router.push({ pathname: '/paywall', params: { from: 'look' } });
+  };
+
+  const apply = async (next: string | null) => {
+    if (!next) return;
+    setUri(next);
+    setResult(null);
+    await run(next, focus);
   };
 
   const shoot = async () => {
@@ -66,10 +66,10 @@ export default function LookScreen() {
   const rerun = async (nextFocus: LookFocus) => {
     setFocus(nextFocus);
     if (!uri) return;
-    setBusy(true);
-    setResult(await lookAtPhoto(uri, nextFocus, dog));
-    setBusy(false);
+    await run(uri, nextFocus);
   };
+
+  const sourceLabel = result ? (result.source === 'ai' ? 'AI looked at this photo' : 'Checklist') : busy ? 'Looking' : 'Photo helper';
 
   if (!permission) return <View style={{ flex: 1, backgroundColor: '#000' }} />;
 
@@ -88,7 +88,7 @@ export default function LookScreen() {
             Camera for Look
           </Text>
           <Text variant="body" tone="secondary" align="center">
-            This is AI. Point it at {dog?.name ?? 'your dog'} and we will look at the photo. You can also pick one from your library.
+            Point it at {dog?.name ?? 'your dog'}. We look at the photo and give you a checklist for that spot. You can also pick one from your library.
           </Text>
           <Button label="Allow camera" onPress={requestPermission} />
           <Button label="Upload from library" icon="photo" kind="ghost" onPress={() => void pickFromLibrary().then(apply)} />
@@ -101,10 +101,10 @@ export default function LookScreen() {
             <Icon name="sparkle" size={16} color={t.accent} />
             <View style={{ flex: 1 }}>
               <Text variant="label" style={{ color: palette.paper }}>
-                This is AI
+                Photo helper
               </Text>
               <Text variant="caption" style={{ color: 'rgba(250,243,230,0.86)' }}>
-                Look at this photo of {dog?.name ?? 'your dog'}. Not a vet. Close up, daylight if you can.
+                A model looks at the photo when one is available. Not a vet. Close up, daylight if you can.
               </Text>
             </View>
           </View>
@@ -119,7 +119,7 @@ export default function LookScreen() {
         </Tap>
         <Glass borderRadius={radius.pill} style={styles.pill}>
           <Icon name="sparkle" size={14} color={t.brand} />
-          <Text variant="label">Look · AI</Text>
+          <Text variant="label">Look</Text>
         </Glass>
         {!uri && permission.granted ? (
           <Tap onPress={() => setFacing((f) => (f === 'back' ? 'front' : 'back'))} haptic="selection" accessibilityLabel="Flip camera">
@@ -151,7 +151,14 @@ export default function LookScreen() {
       {uri ? (
         <Animated.View entering={FadeInUp.duration(260)} style={[styles.sheet, { paddingBottom: insets.bottom + space.lg }]}>
           <Surface kind="raised" radiusSize="xl" style={{ gap: space.md }}>
-            <Text variant="headline">{busy ? 'Looking at this photo' : result?.title ?? 'Look at this photo'}</Text>
+            <View style={styles.row}>
+              <Text variant="headline" style={{ flex: 1 }}>
+                {busy ? 'Looking at this photo' : result?.title ?? 'Look at this photo'}
+              </Text>
+              <Text variant="micro" tone="tertiary">
+                {sourceLabel}
+              </Text>
+            </View>
             <View style={styles.chips}>
               {LOOK_FOCUSES.map((f) => (
                 <Chip key={f.id} label={f.label} selected={focus === f.id} onPress={() => void rerun(f.id)} />
@@ -169,10 +176,20 @@ export default function LookScreen() {
                 <Text variant="caption" tone="tertiary">
                   {result.caution}
                 </Text>
+                {result.source === 'local' && result.reason === 'quota' ? (
+                  <Text variant="caption" tone="secondary">
+                    Three model Looks a day are free. Premium removes the cap.
+                  </Text>
+                ) : null}
+                {result.source === 'local' && result.reason === 'offline' ? (
+                  <Text variant="caption" tone="secondary">
+                    Offline, so this is the built-in checklist. Try again when you are connected.
+                  </Text>
+                ) : null}
               </>
             ) : (
               <Text variant="body" tone="secondary">
-                This is AI. Give it a second.
+                Give it a second.
               </Text>
             )}
             <View style={styles.row}>

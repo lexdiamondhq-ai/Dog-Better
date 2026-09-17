@@ -4,9 +4,15 @@ import { useFonts } from 'expo-font';
 import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+import { Button } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
+import { Text } from '@/components/ui/Text';
+import { space } from '@/theme/tokens';
 
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { DogsProvider, useDogs } from '@/lib/dogs';
@@ -76,15 +82,30 @@ export default function RootLayout() {
 function Gate() {
   const t = useTheme();
   const { session, ready } = useAuth();
-  const { dogs, loaded } = useDogs();
+  const { dogs, loaded, offline, refresh } = useDogs();
   const ent = useEntitlements();
   const segments = useSegments();
   const params = useGlobalSearchParams<{ mode?: string | string[]; preview?: string | string[] }>();
   const router = useRouter();
   const addMode = (Array.isArray(params.mode) ? params.mode[0] : params.mode) === 'add';
   const previewWelcome = (Array.isArray(params.preview) ? params.preview[0] : params.preview) === '1';
+  const [stalled, setStalled] = useState(false);
 
   const decided = ready && (!session || loaded) && ent.loaded;
+
+  // Signed in, no network, and no cached roster: do not guess. Show a retry instead of onboarding.
+  const waiting = !decided && ready && !!session;
+  useEffect(() => {
+    if (!waiting) return;
+    const id = setTimeout(() => {
+      setStalled(true);
+      SplashScreen.hideAsync();
+    }, 6000);
+    return () => {
+      clearTimeout(id);
+      setStalled(false);
+    };
+  }, [waiting]);
 
   useEffect(() => {
     if (!decided) return;
@@ -120,6 +141,22 @@ function Gate() {
         <Stack.Screen name="(app)" />
         <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       </Stack>
+      {stalled && !decided ? (
+        <View style={[StyleSheet.absoluteFill, styles.offline, { backgroundColor: t.bg }]}>
+          <Icon name="info" size={36} color={t.brand} />
+          <Text variant="title" align="center">
+            {offline ? 'You look offline' : 'Still connecting'}
+          </Text>
+          <Text variant="body" tone="secondary" align="center">
+            Your dogs and records are safe in your account. Reconnect and try again.
+          </Text>
+          <Button label="Try again" onPress={() => void refresh()} />
+        </View>
+      ) : null}
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  offline: { alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.md },
+});

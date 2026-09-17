@@ -1,5 +1,4 @@
-import * as FileSystem from 'expo-file-system/legacy';
-
+import { callAi, photoToBase64, type AiReason, type AiSource } from './ai';
 import type { Dog } from './database.types';
 
 export type LookFocus = 'coat' | 'paws' | 'ears' | 'eyes' | 'body' | 'whats';
@@ -19,6 +18,10 @@ export type LookResult = {
   checks: string[];
   next: string;
   caution: string;
+  /** 'ai' when a model looked at the photo, 'local' when this is the built-in checklist. */
+  source: AiSource;
+  /** Why the model did not run, when source is 'local'. */
+  reason?: AiReason;
 };
 
 function dogLine(dog: Dog | null) {
@@ -27,10 +30,12 @@ function dogLine(dog: Dog | null) {
   return bits.join(', ');
 }
 
-export function localLook(focus: LookFocus, dog: Dog | null): LookResult {
+export function localLook(focus: LookFocus, dog: Dog | null, reason?: AiReason): LookResult {
   const who = dogLine(dog);
   const allergy = dog?.allergies?.length ? `Known sensitivities: ${dog.allergies.join(', ')}.` : null;
   const base = {
+    source: 'local' as const,
+    reason,
     caution: 'This is a photo helper, not a diagnosis. If they seem in pain, cannot breathe easily, collapse, or eat something toxic, go to a vet now.',
   };
 
@@ -118,50 +123,32 @@ export function localLook(focus: LookFocus, dog: Dog | null): LookResult {
   };
 }
 
-export async function lookAtPhoto(uri: string, focus: LookFocus, dog: Dog | null): Promise<LookResult> {
-  const fallback = localLook(focus, dog);
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  if (!key) return fallback;
+type ModelLook = { title?: string; summary?: string; checks?: string[]; next?: string; caution?: string };
 
+/**
+ * Ask the model through the `ai` Edge Function. Quota and Premium are enforced there; when the
+ * model does not run for any reason the caller still gets the local checklist, labelled as such.
+ */
+export async function lookAtPhoto(uri: string, focus: LookFocus, dog: Dog | null): Promise<LookResult> {
+  let b64: string;
   try {
-    const b64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-    const label = LOOK_FOCUSES.find((f) => f.id === focus)?.prompt ?? '';
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0.3,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You help a dog owner look at a photo. You are not a veterinarian. Return JSON only: {"title","summary","checks":[string],"next","caution"}. Be specific about what you see. Never invent a diagnosis. Urge a vet for pain, breathing, eye injuries, tight belly, or toxins.',
-          },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `${label} Dog: ${dogLine(dog)}. Allergies: ${dog?.allergies?.join(', ') || 'none logged'}.` },
-              { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } },
-            ],
-          },
-        ],
-      }),
-    });
-    if (!res.ok) return fallback;
-    const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    const raw = json.choices?.[0]?.message?.content?.trim();
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw.replace(/^```json\s*|```$/g, '')) as LookResult;
-    if (!parsed.summary || !Array.isArray(parsed.checks)) return fallback;
-    return {
-      title: parsed.title || fallback.title,
-      summary: parsed.summary,
-      checks: parsed.checks.slice(0, 6),
-      next: parsed.next || fallback.next,
-      caution: parsed.caution || fallback.caution,
-    };
+    b64 = await photoToBase64(uri);
   } catch {
-    return fallback;
+    return localLook(focus, dog, 'model_error');
   }
+  const prompt = LOOK_FOCUSES.find((f) => f.id === focus)?.prompt ?? '';
+  const res = await callAi<ModelLook>({ kind: 'look', prompt, dogLine: dogLine(dog), allergies: dog?.allergies ?? [], imageBase64: b64 });
+  if (!res.ok) return localLook(focus, dog, res.reason);
+
+  const fallback = localLook(focus, dog);
+  const parsed = res.result;
+  if (!parsed.summary || !Array.isArray(parsed.checks)) return localLook(focus, dog, 'model_error');
+  return {
+    source: 'ai',
+    title: parsed.title || fallback.title,
+    summary: parsed.summary,
+    checks: parsed.checks.slice(0, 6),
+    next: parsed.next || fallback.next,
+    caution: parsed.caution || fallback.caution,
+  };
 }

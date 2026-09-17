@@ -52,7 +52,7 @@ export function CirclesProvider({ children }: PropsWithChildren) {
   }, [user]);
 
   useEffect(() => {
-    void load();
+    void Promise.resolve().then(load);
   }, [load]);
 
   const ensureStarter = useCallback(async () => {

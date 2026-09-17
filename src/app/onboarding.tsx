@@ -15,6 +15,7 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
+import { usePremiumGate } from '@/lib/gates';
 import { usePoints } from '@/lib/points';
 import { humanizeError } from '@/lib/errors';
 import { pickFromLibrary, uploadImage } from '@/lib/media';
@@ -43,6 +44,7 @@ export default function Onboarding() {
   const adding = mode === 'add';
   const { user } = useAuth();
   const { refresh, setActiveDog } = useDogs();
+  const gate = usePremiumGate();
   const { award } = usePoints();
   const { weightUnit, setWeightUnit, loaded: prefsLoaded } = usePreferences();
 
@@ -53,11 +55,14 @@ export default function Onboarding() {
   const [years, setYears] = useState('');
   const [months, setMonths] = useState('');
   const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState<'kg' | 'lb'>(weightUnit);
+  // Preferences load async; until then the unit falls back to the stored default at first render.
+  const [unit, setUnit] = useState<'kg' | 'lb' | null>(prefsLoaded ? weightUnit : null);
+  const unitResolved: 'kg' | 'lb' = unit ?? weightUnit;
 
+  // A second dog is Premium. Deep links into add mode get the same gate as the buttons.
   useEffect(() => {
-    if (prefsLoaded) setUnit(weightUnit);
-  }, [prefsLoaded, weightUnit]);
+    if (adding && !gate.allows('multi_dog')) router.replace({ pathname: '/paywall', params: { from: 'multi_dog' } });
+  }, [adding, gate, router]);
   const [vetName, setVetName] = useState('');
   const [vetPhone, setVetPhone] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
@@ -74,7 +79,7 @@ export default function Onboarding() {
     setStep(STEPS[idx - 1]);
   };
 
-  const weightKg = parseWeightInput(weight, unit);
+  const weightKg = parseWeightInput(weight, unitResolved);
 
   const birthdate = (() => {
     const y = parseInt(years || '0', 10);
@@ -112,7 +117,7 @@ export default function Onboarding() {
         .single();
       if (err) throw err;
       if (weightKg) await supabase.from('weight_entries').insert({ dog_id: data.id, owner_id: user.id, weight_kg: Math.round(weightKg * 10) / 10 });
-      setWeightUnit(unit);
+      setWeightUnit(unitResolved);
       setActiveDog(data.id);
       await refresh();
       await award({ kind: 'dog', key: `dog:${data.id}`, dogId: data.id });
@@ -197,12 +202,12 @@ export default function Onboarding() {
             </View>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
-                <Field label="Weight" placeholder="0" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" suffix={unit} />
+                <Field label="Weight" placeholder="0" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" suffix={unitResolved} />
               </View>
               <View style={[styles.unitToggle, { backgroundColor: t.surface }]}>
                 {(['kg', 'lb'] as const).map((u) => (
-                  <Tap key={u} onPress={() => setUnit(u)} haptic="selection" style={[styles.unit, unit === u && { backgroundColor: t.brand }]}>
-                    <Text variant="label" tone={unit === u ? 'onBrand' : 'secondary'}>
+                  <Tap key={u} onPress={() => setUnit(u)} haptic="selection" style={[styles.unit, unitResolved === u && { backgroundColor: t.brand }]}>
+                    <Text variant="label" tone={unitResolved === u ? 'onBrand' : 'secondary'}>
                       {u}
                     </Text>
                   </Tap>

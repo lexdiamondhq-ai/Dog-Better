@@ -7,7 +7,8 @@ import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { ADD_DOG_HREF, useDogs } from '@/lib/dogs';
+import { useDogs } from '@/lib/dogs';
+import { usePremiumGate } from '@/lib/gates';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -22,6 +23,7 @@ export function DogSwitcher({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { dog, dogs, setActiveDog } = useDogs();
+  const gate = usePremiumGate();
 
   const pick = (id: string) => {
     setActiveDog(id);
@@ -30,7 +32,7 @@ export function DogSwitcher({ visible, onClose }: Props) {
 
   const add = () => {
     onClose();
-    router.push(ADD_DOG_HREF);
+    gate.openAddDog();
   };
 
   const openProfile = () => {
@@ -77,7 +79,7 @@ export function DogSwitcher({ visible, onClose }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text variant="headline">Add another dog</Text>
                   <Text variant="caption" tone="secondary">
-                    Their own profile, meals, and Better Score
+                    {gate.allows('multi_dog') ? 'Their own profile, meals, and Better Score' : 'Every dog in the house is part of Premium'}
                   </Text>
                 </View>
               </Tap>

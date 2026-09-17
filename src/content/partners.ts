@@ -1,7 +1,7 @@
 /**
  * Affiliate partners. Every link here is disclosed in the UI next to the link, is shown only where
  * it is relevant to the dog (never inside emergency or triage flows), and passes the dog's profile
- * rules before it appears. Replace placeholder URLs with tracked links once the programmes approve us.
+ * rules before it appears. Only programmes that have approved Dog Better belong in this file.
  */
 
 export type Partner = { id: string; name: string; tagline: string; url: string; disclosure: string };
@@ -17,8 +17,19 @@ export type ShopLink = {
   size: 'any' | 'small' | 'medium' | 'large';
 };
 
-/** Replace with the approved Amazon Associates tag before store review. */
+/** Amazon Associates Store ID for Dog Better. Only appended to links once AMAZON_APP_APPROVED is true. */
 export const AMAZON_TAG = 'dogbetter20-20';
+
+/**
+ * Amazon's Mobile Application Policy: Special Links may only appear in an "Approved Mobile
+ * Application", and approval needs a live App Store URL. Ship v1 with this false so every Amazon
+ * link opens without a tag (still useful, never a violation). Flip to true once Associates Central
+ * lists the app as approved, then submit the next build.
+ */
+export const AMAZON_APP_APPROVED = false;
+
+/** The sentence Amazon's Operating Agreement asks participants to show. Appears wherever an Amazon link does. */
+export const AMAZON_PARTICIPANT_LINE = 'As an Amazon Associate, Dog Better earns from qualifying purchases.';
 
 export const SHOP_CATEGORIES: { id: ShopCategory | 'all'; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -51,24 +62,13 @@ export const SHOP_LINKS: ShopLink[] = [
   { id: 'health-firstaid', category: 'health', title: 'First-aid kit', why: 'Not a replacement for emergency mode. For the walk bag.', query: 'dog first aid kit', size: 'any' },
 ];
 
-export const INSURANCE_PARTNERS: Partner[] = [
-  {
-    id: 'petsonme',
-    name: 'PetsOnMe',
-    tagline: 'Accident and illness cover with a simple claims flow.',
-    url: 'https://www.petsonme.com/?ref=dogbetter',
-    disclosure: 'Dog Better may earn a commission if you take out a policy. It does not change the price you pay.',
-  },
-];
+/**
+ * Pet insurance affiliates. Empty until a real programme (Lemonade Pet, Embrace, Fetch, Trupanion via
+ * Impact or CJ) issues a tracked link. A guessed `?ref=` parameter earns nothing and misleads users.
+ */
+export const INSURANCE_PARTNERS: Partner[] = [];
 
-export const SHOP_PARTNERS: Partner[] = [
-  {
-    id: 'amazon-essentials',
-    name: 'Amazon pet essentials',
-    tagline: 'Food, chews, and gear sized to this dog.',
-    url: `https://www.amazon.com/s?k=dog+essentials&tag=${AMAZON_TAG}`,
-    disclosure: 'Dog Better may earn a commission from qualifying purchases.',
-  },
-];
+export const AFFILIATE_DISCLOSURE = `${AMAZON_PARTICIPANT_LINE} Links cost you nothing extra. Recommendations are driven by your dog\u2019s profile, not by commission.`;
 
-export const AFFILIATE_DISCLOSURE = 'Some links are affiliate links. Dog Better may earn a commission at no extra cost to you. Recommendations are driven by your dog\u2019s profile, not by commission.';
+/** Local business slots open a plain Maps search today. No business pays for them yet, and the copy says so. */
+export const LOCAL_SLOT_DISCLOSURE = 'Opens Maps. Not a paid placement. Premium hides partner cards.';

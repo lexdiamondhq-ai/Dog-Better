@@ -18,10 +18,11 @@ type Props = {
   onToggleMute: () => void;
   onLike: () => void;
   onDelete?: () => void;
+  onReport?: () => void;
   height: number;
 };
 
-export function BarkSlide({ bark, active, muted, onToggleMute, onLike, onDelete, height }: Props) {
+export function BarkSlide({ bark, active, muted, onToggleMute, onLike, onDelete, onReport, height }: Props) {
   const insets = useSafeAreaInsets();
   const url = publicMediaUrl(bark.image_path) ?? '';
   const player = useVideoPlayer(url, (p) => {
@@ -77,6 +78,10 @@ export function BarkSlide({ bark, active, muted, onToggleMute, onLike, onDelete,
           {onDelete ? (
             <Tap onPress={onDelete} haptic="medium" style={styles.railBtn} accessibilityLabel="Delete bark">
               <Icon name="trash" size={22} color={palette.paper} />
+            </Tap>
+          ) : onReport ? (
+            <Tap onPress={onReport} haptic="selection" style={styles.railBtn} accessibilityLabel="Report or block">
+              <Icon name="warning" size={22} color={palette.paper} />
             </Tap>
           ) : null}
         </View>

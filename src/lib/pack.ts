@@ -3,7 +3,6 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from './auth';
 import type { Post, Profile } from './database.types';
-import { isVideoPath } from './media';
 import { supabase } from './supabase';
 
 export type FeedPost = Post & {
@@ -16,14 +15,27 @@ export type FeedPost = Post & {
 
 const PAGE = 30;
 
+type PostRow = Post & { dog: { name: string; avatar_url: string | null } | null };
+
+/** Photo posts only. Videos are Barks and have their own feed; the split is a column, not a file extension. */
 export async function fetchFeed(userId: string, opts?: { authorId?: string; circleId?: string | null }): Promise<FeedPost[]> {
-  let q = supabase.from('posts').select('*, dog:dogs(name, avatar_url)').order('created_at', { ascending: false }).limit(PAGE);
+  let q = supabase.from('posts').select('*, dog:dogs(name, avatar_url)').eq('kind', 'photo').order('created_at', { ascending: false }).limit(PAGE);
   if (opts?.authorId) q = q.eq('author_id', opts.authorId);
   if (opts?.circleId) q = q.eq('circle_id', opts.circleId);
   else if (opts && 'circleId' in opts) return [];
   const { data: posts } = await q;
-  if (!posts?.length) return [];
-  const rows = posts.filter((p) => !p.image_path || !isVideoPath(p.image_path));
+  return decorate((posts ?? []) as PostRow[], userId);
+}
+
+/** One post by id, subject to the same visibility rules. Null when hidden, blocked, or gone. */
+export async function fetchPost(id: string, userId: string): Promise<FeedPost | null> {
+  const { data } = await supabase.from('posts').select('*, dog:dogs(name, avatar_url)').eq('id', id).maybeSingle();
+  if (!data) return null;
+  const [post] = await decorate([data as PostRow], userId);
+  return post ?? null;
+}
+
+export async function decorate(rows: PostRow[], userId: string): Promise<FeedPost[]> {
   if (!rows.length) return [];
 
   const ids = rows.map((p) => p.id);
@@ -45,11 +57,9 @@ export async function fetchFeed(userId: string, opts?: { authorId?: string; circ
   for (const c of comments ?? []) commentCount.set(c.post_id, (commentCount.get(c.post_id) ?? 0) + 1);
 
   return rows.map((p) => {
-    const dog = (p as unknown as { dog: { name: string; avatar_url: string | null } | null }).dog;
-    const { dog: _drop, ...rest } = p as Post & { dog: unknown };
-    void _drop;
+    const { dog, ...rest } = p;
     return {
-      ...(rest as Post),
+      ...rest,
       author: profileById.get(p.author_id) ?? null,
       dog: dog ?? null,
       likes: likeCount.get(p.id) ?? 0,
@@ -91,16 +101,19 @@ export function useFeed(opts?: { authorId?: string; circleId?: string | null }) 
     }, [load]),
   );
 
-  // New posts from anyone in the pack show up live without a pull.
+  // New posts in this circle show up live without a pull. Scoped by circle so one post does not
+  // refetch every open feed in the product.
   useEffect(() => {
+    const circleId = opts?.circleId;
+    if (!circleId) return;
     const channel = supabase
-      .channel('pack-feed')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, () => load())
+      .channel(`pack-feed-${circleId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts', filter: `circle_id=eq.${circleId}` }, () => load())
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, opts?.circleId]);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -121,10 +134,21 @@ export function useFeed(opts?: { authorId?: string; circleId?: string | null }) 
     async (post: FeedPost) => {
       if (!user || post.author_id !== user.id) return;
       setPosts((prev) => prev.filter((p) => p.id !== post.id));
-      await supabase.from('posts').delete().eq('id', post.id).eq('author_id', user.id);
+      await deletePostWithMedia(post, user.id);
     },
     [user],
   );
 
-  return { posts, loading, refreshing, refresh, like, remove, reload: load };
+  /** Drop a post from local state after a report or block. RLS keeps it gone on the next load. */
+  const hide = useCallback((postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
+  return { posts, loading, refreshing, refresh, like, remove, hide, reload: load };
+}
+
+/** Deleting the row never deleted the object, so removed photos stayed publicly fetchable. Both go now. */
+export async function deletePostWithMedia(post: Pick<Post, 'id' | 'image_path'>, userId: string) {
+  await supabase.from('posts').delete().eq('id', post.id).eq('author_id', userId);
+  if (post.image_path) await supabase.storage.from('media').remove([post.image_path]);
 }

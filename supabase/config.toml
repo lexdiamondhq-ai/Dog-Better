@@ -1,0 +1,12 @@
+# Supabase project link for the CLI. Schema changes live in supabase/migrations and are the source of truth.
+project_id = "zdhpwcwxbxmorfnhufhq"
+
+[functions.delete-account]
+verify_jwt = true
+
+[functions.ai]
+verify_jwt = true
+
+# RevenueCat signs requests with its own shared secret (REVENUECAT_WEBHOOK_SECRET), not a Supabase JWT.
+[functions.revenuecat-webhook]
+verify_jwt = false

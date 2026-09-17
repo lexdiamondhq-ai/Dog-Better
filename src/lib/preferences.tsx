@@ -4,17 +4,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type Appearance = 'system' | 'light' | 'dark';
 export type WeightUnit = 'kg' | 'lb';
 
+/** Only the two deliveries that exist. Each maps to local notifications scheduled from the calendar. */
 export type NotificationPrefs = {
-  /** Morning nudge to do the daily check-in. */
+  /** Calendar items other than medication: meals, walks, vet visits, and the rest. */
   checkIn: boolean;
-  /** Medication due and refill countdowns. */
+  /** Medication doses on the calendar. */
   medication: boolean;
-  /** When the plan changes because of weather, a flagged disruption, or a new pattern. */
-  planChanges: boolean;
-  /** Follow-ups after a symptom log: "how are they now?" */
-  symptomFollowUp: boolean;
-  /** Product recall alerts for saved items (arrives with the recall feature). */
-  recalls: boolean;
 };
 
 export type Preferences = {
@@ -26,7 +21,7 @@ export type Preferences = {
 const DEFAULTS: Preferences = {
   appearance: 'system',
   weightUnit: 'lb',
-  notifications: { checkIn: true, medication: true, planChanges: true, symptomFollowUp: true, recalls: true },
+  notifications: { checkIn: true, medication: true },
 };
 
 const KEY = 'dogbetter.preferences.v1';
@@ -49,11 +44,15 @@ export function PreferencesProvider({ children }: PropsWithChildren) {
     AsyncStorage.getItem(KEY)
       .then((raw) => {
         if (raw) {
-          const parsed = JSON.parse(raw) as Partial<Preferences>;
+          const parsed = JSON.parse(raw) as Partial<Preferences> & { notifications?: Partial<NotificationPrefs> & Record<string, unknown> };
+          // Older builds stored toggles for deliveries that never existed; only the two real ones survive.
           setPrefs({
             appearance: parsed.appearance ?? DEFAULTS.appearance,
             weightUnit: parsed.weightUnit ?? DEFAULTS.weightUnit,
-            notifications: { ...DEFAULTS.notifications, ...parsed.notifications },
+            notifications: {
+              checkIn: typeof parsed.notifications?.checkIn === 'boolean' ? parsed.notifications.checkIn : DEFAULTS.notifications.checkIn,
+              medication: typeof parsed.notifications?.medication === 'boolean' ? parsed.notifications.medication : DEFAULTS.notifications.medication,
+            },
           });
         }
       })

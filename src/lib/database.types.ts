@@ -1,6 +1,9 @@
-// Generated from the live Supabase schema (project zdhpwcwxbxmorfnhufhq).
-// Regenerate with the Supabase MCP `generate_typescript_types` tool or `supabase gen types`.
+// Generated from the live Supabase schema (project zdhpwcwxbxmorfnhufhq), then hand-tightened with string unions.
+// Regenerate with the Supabase MCP `generate_typescript_types` tool or `supabase gen types`, and re-apply the unions.
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type ReportReason = 'spam' | 'harassment' | 'animal_welfare' | 'explicit' | 'other';
+export type ReportTarget = 'post' | 'comment' | 'user' | 'place';
 
 export type Database = {
   __InternalSupabase: {
@@ -251,9 +254,9 @@ export type Database = {
         Relationships: [{ foreignKeyName: 'circle_members_circle_id_fkey'; columns: ['circle_id']; isOneToOne: false; referencedRelation: 'circles'; referencedColumns: ['id'] }];
       };
       posts: {
-        Row: { author_id: string; caption: string | null; circle_id: string | null; created_at: string; dog_id: string | null; id: string; image_path: string | null };
-        Insert: { author_id: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
-        Update: { author_id?: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null };
+        Row: { author_id: string; caption: string | null; circle_id: string | null; created_at: string; dog_id: string | null; id: string; image_path: string | null; kind: 'photo' | 'video' };
+        Insert: { author_id: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null; kind?: 'photo' | 'video' };
+        Update: { author_id?: string; caption?: string | null; circle_id?: string | null; created_at?: string; dog_id?: string | null; id?: string; image_path?: string | null; kind?: 'photo' | 'video' };
         Relationships: [
           { foreignKeyName: 'posts_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
         ];
@@ -267,9 +270,33 @@ export type Database = {
         ];
       };
       profiles: {
-        Row: { avatar_url: string | null; created_at: string; display_name: string | null; id: string };
-        Insert: { avatar_url?: string | null; created_at?: string; display_name?: string | null; id: string };
-        Update: { avatar_url?: string | null; created_at?: string; display_name?: string | null; id?: string };
+        Row: { avatar_url: string | null; created_at: string; display_name: string | null; id: string; premium_until: string | null; rc_app_user_id: string | null };
+        Insert: { avatar_url?: string | null; created_at?: string; display_name?: string | null; id: string; premium_until?: string | null; rc_app_user_id?: string | null };
+        Update: { avatar_url?: string | null; created_at?: string; display_name?: string | null; id?: string; premium_until?: string | null; rc_app_user_id?: string | null };
+        Relationships: [];
+      };
+      blocked_users: {
+        Row: { blocked_id: string; blocker_id: string; created_at: string };
+        Insert: { blocked_id: string; blocker_id: string; created_at?: string };
+        Update: { blocked_id?: string; blocker_id?: string; created_at?: string };
+        Relationships: [];
+      };
+      reports: {
+        Row: { created_at: string; details: string | null; id: string; reason: ReportReason; reporter_id: string; status: 'open' | 'reviewed' | 'actioned'; target_id: string; target_kind: ReportTarget };
+        Insert: { created_at?: string; details?: string | null; id?: string; reason: ReportReason; reporter_id: string; status?: 'open' | 'reviewed' | 'actioned'; target_id: string; target_kind: ReportTarget };
+        Update: { created_at?: string; details?: string | null; id?: string; reason?: ReportReason; reporter_id?: string; status?: 'open' | 'reviewed' | 'actioned'; target_id?: string; target_kind?: ReportTarget };
+        Relationships: [];
+      };
+      ai_daily_uses: {
+        Row: { count: number; day: string; kind: string; user_id: string };
+        Insert: { count?: number; day: string; kind: string; user_id: string };
+        Update: { count?: number; day?: string; kind?: string; user_id?: string };
+        Relationships: [];
+      };
+      analytics_events: {
+        Row: { app_version: string | null; created_at: string; id: number; name: string; platform: string | null; props: Json; user_id: string | null };
+        Insert: { app_version?: string | null; created_at?: string; id?: never; name: string; platform?: string | null; props?: Json; user_id?: string | null };
+        Update: { app_version?: string | null; created_at?: string; id?: never; name?: string; platform?: string | null; props?: Json; user_id?: string | null };
         Relationships: [];
       };
       weight_entries: {
@@ -283,6 +310,9 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      is_blocked_either_way: { Args: { other: string }; Returns: boolean };
+      is_circle_member: { Args: { cid: string }; Returns: boolean };
+      owns_circle: { Args: { cid: string }; Returns: boolean };
       join_circle: { Args: { code: string }; Returns: string };
       create_circle: {
         Args: { p_name: string; p_kind?: 'nearby' | 'contacts' | 'custom' };
@@ -314,3 +344,5 @@ export type PostComment = Tables<'post_comments'>;
 export type Circle = Tables<'circles'>;
 export type CircleMember = Tables<'circle_members'>;
 export type Walk = Tables<'walks'>;
+export type Report = Tables<'reports'>;
+export type BlockedUser = Tables<'blocked_users'>;

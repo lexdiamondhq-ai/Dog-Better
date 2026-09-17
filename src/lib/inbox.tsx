@@ -77,7 +77,7 @@ export function InboxProvider({ children }: PropsWithChildren) {
   }, [user]);
 
   useEffect(() => {
-    void refresh();
+    void Promise.resolve().then(refresh);
   }, [refresh]);
 
   useEffect(() => {

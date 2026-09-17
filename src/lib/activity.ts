@@ -87,6 +87,7 @@ export function useDogActivity(dog: Dog | null) {
     startOfDay.setHours(0, 0, 0, 0);
     const weekAgo = now - 7 * 86400000;
     const mealsToday = activity.meals.filter((m) => new Date(m.logged_at) >= startOfDay);
+    const treatKcalToday = mealsToday.filter((m) => m.kind === 'treat').reduce((n, m) => n + (m.calories ?? 0), 0);
     const recentHealth = activity.health.filter((h) => new Date(h.created_at).getTime() >= weekAgo);
     const worst = recentHealth.some((h) => h.triage === 'red') ? 'red' : recentHealth.some((h) => h.triage === 'amber') ? 'amber' : recentHealth.length ? 'green' : 'none';
     const lastWeight = activity.weights[0];
@@ -111,7 +112,7 @@ export function useDogActivity(dog: Dog | null) {
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, 8);
 
-    return { mealsToday, score, timeline, lastWeight };
+    return { mealsToday, treatKcalToday, score, timeline, lastWeight };
   }, [activity, dog, weightUnit]);
 
   return { ...activity, ...derived, loading, refreshing, refresh, reload: load };

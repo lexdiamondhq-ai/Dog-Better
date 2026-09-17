@@ -16,11 +16,12 @@ export default function Inbox() {
   const t = useTheme();
   const router = useRouter();
   const inbox = useInbox();
+  const markSeen = inbox.markCommentsSeen;
 
   useFocusEffect(
     useCallback(() => {
-      void inbox.markCommentsSeen();
-    }, [inbox.markCommentsSeen]),
+      void markSeen();
+    }, [markSeen]),
   );
 
   return (

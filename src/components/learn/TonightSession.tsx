@@ -27,23 +27,27 @@ export function TonightSession({ session, footer }: { session: Session; footer?:
   const t = useTheme();
   const { dog } = useDogs();
   const { award } = usePoints();
-  const [phase, setPhase] = useState<Phase>('ready');
-  const [step, setStep] = useState(0);
-  const [left, setLeft] = useState(LIMIT);
-  const [paid, setPaid] = useState(false);
+  // Session progress is keyed by session id; a new session starts a fresh run without an effect.
+  type Run = { id: string; phase: Phase; step: number; left: number; paid: boolean };
+  const fresh = (id: string): Run => ({ id, phase: 'ready', step: 0, left: LIMIT, paid: false });
+  const [run, setRun] = useState<Run>(() => fresh(session.id));
+  const current = run.id === session.id ? run : fresh(session.id);
+  const { phase, step, left, paid } = current;
+  const patch = (fn: (prev: Run) => Partial<Run>) => setRun((prev) => {
+    const base = prev.id === session.id ? prev : fresh(session.id);
+    return { ...base, ...fn(base) };
+  });
+  const setPhase = (v: Phase) => patch(() => ({ phase: v }));
+  const setStep = (v: number | ((n: number) => number)) => patch((p) => ({ step: typeof v === 'function' ? v(p.step) : v }));
+  const setLeft = (v: number | ((n: number) => number)) => patch((p) => ({ left: typeof v === 'function' ? v(p.left) : v }));
+  const setPaid = (v: boolean) => patch(() => ({ paid: v }));
 
-  useEffect(() => {
-    setPhase('ready');
-    setStep(0);
-    setLeft(LIMIT);
-    setPaid(false);
-  }, [session.id]);
-
+  const sessionId = session.id;
   useEffect(() => {
     if (phase !== 'play') return;
-    const id = setInterval(() => setLeft((n) => Math.max(0, n - 1)), 1000);
+    const id = setInterval(() => setRun((prev) => (prev.id === sessionId ? { ...prev, left: Math.max(0, prev.left - 1) } : prev)), 1000);
     return () => clearInterval(id);
-  }, [phase]);
+  }, [phase, sessionId]);
 
   const last = step >= session.steps.length - 1;
   const fill = phase === 'ready' ? 0 : phase === 'done' ? 1 : Math.max((step + 1) / session.steps.length, (LIMIT - left) / LIMIT);

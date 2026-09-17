@@ -12,6 +12,7 @@ import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { REWARDS } from '@/engine/rewards';
+import { track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
 import { humanizeError } from '@/lib/errors';
@@ -22,7 +23,6 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
 export default function NewBark() {
-  const t = useTheme();
   const router = useRouter();
   const { user } = useAuth();
   const { dog } = useDogs();
@@ -61,8 +61,10 @@ export default function NewBark() {
         caption: caption.trim() || null,
         image_path,
         circle_id: null,
+        kind: 'video',
       });
       if (err) throw err;
+      void track('post_created', { kind: 'video' });
       await award({ kind: 'post', key: `bark:${user.id}:${Date.now()}`, dogId: dog?.id });
       router.replace('/(app)/barks');
     } catch (e) {

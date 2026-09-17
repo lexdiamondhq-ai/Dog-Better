@@ -12,6 +12,7 @@ import { humanize, relativeTime, useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
 import { shareClinicFile } from '@/lib/exportData';
+import { usePremiumGate } from '@/lib/gates';
 import { buildClinicPack, buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
 import { fromKg } from '@/lib/units';
@@ -29,13 +30,16 @@ export default function Clinic() {
   const { dog } = useDogs();
   const a = useDogActivity(dog);
   const { weightUnit } = usePreferences();
+  const gate = usePremiumGate();
   const [busy, setBusy] = useState(false);
 
   const pack = dog ? buildClinicPack({ dog, ownerEmail: user?.email, weightUnit, weights: a.weights, health: a.health, scans: a.scans }) : '';
   const weights = [...a.weights].reverse();
 
+  // Reading the folder is free. The file the clinic keeps is the Premium part.
   const sendPack = async () => {
     if (!dog) return;
+    if (!gate.require('clinic_pack')) return;
     setBusy(true);
     try {
       await shareClinicFile(dog.name, pack);
@@ -58,9 +62,14 @@ export default function Clinic() {
       </Text>
 
       <View style={styles.row}>
-        <Button label="Send clinic pack" icon="share" onPress={sendPack} loading={busy} style={{ flex: 1 }} disabled={!dog} />
+        <Button label={gate.allows('clinic_pack') ? 'Send clinic pack' : 'Send clinic pack (Premium)'} icon="share" onPress={sendPack} loading={busy} style={{ flex: 1 }} disabled={!dog} />
         <Button label="Care sheet" icon="document" kind="secondary" onPress={sendSheet} disabled={!dog} />
       </View>
+      {!gate.allows('clinic_pack') ? (
+        <Text variant="caption" tone="tertiary">
+          Everything below is free to read. Premium turns it into a file the clinic can keep. The care sheet is always free.
+        </Text>
+      ) : null}
 
       <Section title="At a glance">
         <Surface kind="grouped" padding={0}>

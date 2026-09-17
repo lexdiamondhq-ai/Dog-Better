@@ -15,9 +15,10 @@ import { relativeTime } from '@/lib/activity';
 import { REWARDS } from '@/engine/rewards';
 import { useAuth } from '@/lib/auth';
 import { useInbox } from '@/lib/inbox';
+import { moderationSheet } from '@/lib/moderation';
 import { usePoints } from '@/lib/points';
 import type { PostComment, Profile } from '@/lib/database.types';
-import { fetchFeed, toggleLike, type FeedPost } from '@/lib/pack';
+import { deletePostWithMedia, fetchPost, toggleLike, type FeedPost } from '@/lib/pack';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { space } from '@/theme/tokens';
@@ -38,18 +39,21 @@ export default function PostDetail() {
   const [comments, setComments] = useState<CommentRow[]>([]);
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [missing, setMissing] = useState(false);
 
+  const markSeen = inbox.markCommentsSeen;
   const load = useCallback(() => {
     if (!user) return Promise.resolve();
     return fetchPostDetail(id, user.id).then((r) => {
       setPost(r.post);
+      setMissing(!r.post);
       setComments(r.comments);
-      if (r.post?.author_id === user.id) void inbox.markCommentsSeen();
+      if (r.post?.author_id === user.id) void markSeen();
     });
-  }, [id, user]);
+  }, [id, user, markSeen]);
 
   useEffect(() => {
-    load();
+    void Promise.resolve().then(load);
   }, [load]);
 
   const like = async () => {
@@ -78,61 +82,98 @@ export default function PostDetail() {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await supabase.from('posts').delete().eq('id', post.id).eq('author_id', user.id);
+          await deletePostWithMedia(post, user.id);
           router.back();
         },
       },
     ]);
   };
 
+  const reportPost = () => {
+    if (!post || !user) return;
+    moderationSheet({ reporterId: user.id, targetKind: 'post', targetId: post.id, authorId: post.author_id, authorLabel: post.author?.display_name ?? undefined, onDone: () => router.back() });
+  };
+
+  const reportComment = (c: CommentRow) => {
+    if (!user || c.author_id === user.id) return;
+    moderationSheet({
+      reporterId: user.id,
+      targetKind: 'comment',
+      targetId: c.id,
+      authorId: c.author_id,
+      authorLabel: c.author?.display_name ?? undefined,
+      onDone: () => setComments((prev) => prev.filter((x) => x.id !== c.id)),
+    });
+  };
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen scrollRef={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}>
         <ScreenHeader title="Moment" onBack={() => router.back()} large={false} />
-        {post ? <PostCard post={post} onLike={like} onOpen={() => {}} onDelete={user && post.author_id === user.id ? remove : undefined} /> : null}
-
-        <Section title={comments.length ? `${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}` : 'Comments'}>
-          {comments.length === 0 ? (
-            <Text variant="body" tone="tertiary">
-              Say something kind.
+        {post ? (
+          <PostCard post={post} onLike={like} onOpen={() => {}} onDelete={user && post.author_id === user.id ? remove : undefined} onReport={user && post.author_id !== user.id ? reportPost : undefined} />
+        ) : missing ? (
+          <Surface kind="tonal" style={{ gap: space.sm }}>
+            <Text variant="headline">This moment is gone</Text>
+            <Text variant="body" tone="secondary">
+              It was removed, or it is from someone you no longer see.
             </Text>
-          ) : (
-            <Surface kind="tonal" padding={0} style={{ overflow: 'hidden' }}>
-              {comments.map((c, i) => (
-                <Animated.View key={c.id} entering={FadeInUp.delay(Math.min(i, 8) * 40)} style={[styles.comment, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }]}>
-                  <View style={styles.commentHead}>
-                    <Text variant="label">{c.author?.display_name ?? 'A dog lover'}</Text>
-                    <Text variant="caption" tone="tertiary">
-                      {relativeTime(c.created_at)}
-                    </Text>
-                  </View>
-                  <Text variant="body">{c.body}</Text>
-                </Animated.View>
-              ))}
-            </Surface>
-          )}
-        </Section>
+          </Surface>
+        ) : null}
+
+        {post ? (
+          <Section title={comments.length ? `${comments.length} ${comments.length === 1 ? 'comment' : 'comments'}` : 'Comments'}>
+            {comments.length === 0 ? (
+              <Text variant="body" tone="tertiary">
+                Say something kind.
+              </Text>
+            ) : (
+              <Surface kind="tonal" padding={0} style={{ overflow: 'hidden' }}>
+                {comments.map((c, i) => (
+                  <Animated.View key={c.id} entering={FadeInUp.delay(Math.min(i, 8) * 40)} style={[styles.comment, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }]}>
+                    <View style={styles.commentHead}>
+                      <Text variant="label">{c.author?.display_name ?? 'A dog lover'}</Text>
+                      <View style={styles.commentMeta}>
+                        <Text variant="caption" tone="tertiary">
+                          {relativeTime(c.created_at)}
+                        </Text>
+                        {user && c.author_id !== user.id ? (
+                          <Tap onPress={() => reportComment(c)} haptic="selection" accessibilityLabel="Report or block" style={styles.commentReport}>
+                            <Icon name="warning" size={14} color={t.textTertiary} />
+                          </Tap>
+                        ) : null}
+                      </View>
+                    </View>
+                    <Text variant="body">{c.body}</Text>
+                  </Animated.View>
+                ))}
+              </Surface>
+            )}
+          </Section>
+        ) : null}
       </Screen>
 
-      <View style={[styles.composer, { paddingBottom: insets.bottom + space.sm, backgroundColor: t.bg, borderTopColor: t.border }]}>
-        <View style={{ flex: 1 }}>
-          <Field placeholder={`Add a comment  +${REWARDS.comment.points}`} value={body} onChangeText={setBody} maxLength={280} returnKeyType="send" onSubmitEditing={send} />
+      {post ? (
+        <View style={[styles.composer, { paddingBottom: insets.bottom + space.sm, backgroundColor: t.bg, borderTopColor: t.border }]}>
+          <View style={{ flex: 1 }}>
+            <Field placeholder={`Add a comment  +${REWARDS.comment.points}`} value={body} onChangeText={setBody} maxLength={280} returnKeyType="send" onSubmitEditing={send} />
+          </View>
+          <Tap onPress={send} disabled={sending || body.trim().length === 0} haptic="medium" style={[styles.send, { backgroundColor: body.trim() ? t.brand : t.surfaceStrong }]} accessibilityLabel="Send comment">
+            <Icon name="send" size={18} color={body.trim() ? t.onBrand : t.textTertiary} />
+          </Tap>
         </View>
-        <Tap onPress={send} disabled={sending || body.trim().length === 0} haptic="medium" style={[styles.send, { backgroundColor: body.trim() ? t.brand : t.surfaceStrong }]} accessibilityLabel="Send comment">
-          <Icon name="send" size={18} color={body.trim() ? t.onBrand : t.textTertiary} />
-        </Tap>
-      </View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
 
 async function fetchPostDetail(id: string, userId: string): Promise<{ post: FeedPost | null; comments: CommentRow[] }> {
-  const [feed, { data: rows }] = await Promise.all([fetchFeed(userId), supabase.from('post_comments').select('*').eq('post_id', id).order('created_at', { ascending: true })]);
+  const [post, { data: rows }] = await Promise.all([fetchPost(id, userId), supabase.from('post_comments').select('*').eq('post_id', id).order('created_at', { ascending: true })]);
   const authorIds = Array.from(new Set((rows ?? []).map((r) => r.author_id)));
   const { data: profiles } = authorIds.length ? await supabase.from('profiles').select('id, display_name').in('id', authorIds) : { data: [] };
   const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
   return {
-    post: feed.find((p) => p.id === id) ?? null,
+    post,
     comments: (rows ?? []).map((r) => ({ ...r, author: byId.get(r.author_id) ?? null })),
   };
 }
@@ -140,6 +181,8 @@ async function fetchPostDetail(id: string, userId: string): Promise<{ post: Feed
 const styles = StyleSheet.create({
   comment: { padding: space.lg, gap: space.xs },
   commentHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  commentMeta: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
+  commentReport: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   composer: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, paddingTop: space.sm, borderTopWidth: StyleSheet.hairlineWidth },
   send: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
 });

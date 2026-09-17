@@ -12,15 +12,13 @@ import { OnboardingMascot } from '@/components/brand/OnboardingMascot';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { THEME_SONG_CREDIT, THEME_SONG_TITLE } from '@/content/themeSong';
 import { humanizeError } from '@/lib/errors';
 import { DEV_LOGIN, ProviderUnavailableError, signInAsDevUser, signInWithApple, signInWithGoogle } from '@/lib/signIn';
 import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
 
 /**
- * First thing you see. A cartoon stoop, a pup who cycles tricks, and a quiet seat
- * for the future "Dog Better" theme song. Sign-in stays at the bottom.
+ * First thing you see. A cartoon stoop and a pup who cycles tricks. Sign-in stays at the bottom.
  */
 export default function Welcome() {
   const t = useTheme();
@@ -48,7 +46,7 @@ export default function Welcome() {
       const result = which === 'apple' ? await signInWithApple() : await signInWithGoogle();
       if (result.cancelled) return;
     } catch (e) {
-      if (e instanceof ProviderUnavailableError) setNotice(`${which === 'apple' ? 'Apple' : 'Google'} sign-in is not switched on for this build yet. Use your email for now.`);
+      if (e instanceof ProviderUnavailableError) setNotice(`${which === 'apple' ? 'Apple' : 'Google'} sign-in is unavailable right now. Continue with email instead.`);
       else setNotice(humanizeError(e, 'Could not sign you in. Try again.'));
     } finally {
       setBusy(null);
@@ -96,16 +94,6 @@ export default function Welcome() {
             </Text>
           </Animated.View>
         </View>
-
-        <Animated.View entering={FadeInUp.duration(360).delay(280)} style={[styles.song, { backgroundColor: night ? 'rgba(242,168,29,0.12)' : 'rgba(255,255,255,0.55)', borderColor: t.border }]}>
-          <Icon name="mic" size={16} color={t.accentDeep} />
-          <View style={{ flex: 1 }}>
-            <Text variant="bodyStrong">{THEME_SONG_TITLE}</Text>
-            <Text variant="caption" tone="secondary">
-              {THEME_SONG_CREDIT}
-            </Text>
-          </View>
-        </Animated.View>
 
         {previewing ? (
           <Text variant="caption" tone="tertiary" align="center">
@@ -180,7 +168,6 @@ const styles = StyleSheet.create({
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   lockup: { alignItems: 'center', gap: space.md },
   wordmark: { width: 300, height: 72 },
-  song: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth, marginBottom: space.md },
   actions: { gap: space.sm },
   button: { height: 56, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md },
   buttonIcon: { width: 32, alignItems: 'center', justifyContent: 'center' },

@@ -10,10 +10,12 @@ import { SettingsRow } from '@/components/ui/SettingsRow';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
-import { ADD_DOG_HREF, useDogs } from '@/lib/dogs';
+import { useDogs } from '@/lib/dogs';
+import { usePremiumGate } from '@/lib/gates';
 import { usePoints } from '@/lib/points';
-import { PLANS, trialDaysLeft, useEntitlements } from '@/lib/entitlements';
+import { forgetStoreIdentity, PLANS, trialDaysLeft, useEntitlements } from '@/lib/entitlements';
 import { humanizeError } from '@/lib/errors';
 import { exportAllData } from '@/lib/exportData';
 import { changeDogPhoto } from '@/lib/media';
@@ -33,7 +35,8 @@ export default function Settings() {
   const points = usePoints();
   const prefs = usePreferences();
   const ent = useEntitlements();
-  const [busy, setBusy] = useState<'photo' | 'export' | null>(null);
+  const gate = usePremiumGate();
+  const [busy, setBusy] = useState<'photo' | 'export' | 'delete' | 'restore' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const onChangePhoto = async () => {
@@ -63,17 +66,64 @@ export default function Settings() {
     }
   };
 
+  const deleteNow = async () => {
+    setBusy('delete');
+    setNotice(null);
+    try {
+      const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>('delete-account', { method: 'POST' });
+      if (error || !data?.ok) throw error ?? new Error(data?.error ?? 'delete_failed');
+      void track('account_deleted');
+      await forgetStoreIdentity();
+      await supabase.auth.signOut();
+    } catch (e) {
+      setNotice(humanizeError(e, 'Could not delete the account. Try again, or email support and we will do it by hand.'));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const onDeleteAccount = () => {
-    Alert.alert('Delete your account?', 'This removes your account and every dog, log, and photo in it. We confirm by email before anything is deleted.', [
-      { text: 'Keep my account', style: 'cancel' },
-      { text: 'Request deletion', style: 'destructive', onPress: () => contactSupport('Delete my Dog Better account', `Account: ${user?.email ?? user?.id}`) },
-    ]);
+    Alert.alert(
+      'Delete your account?',
+      `This permanently removes your account, every dog, log, photo, and post in it${ent.isPremium ? ', and it does not cancel your subscription. Cancel that in your Apple ID settings first' : ''}. It cannot be undone.`,
+      [
+        { text: 'Keep my account', style: 'cancel' },
+        {
+          text: 'Delete everything',
+          style: 'destructive',
+          onPress: () =>
+            Alert.alert('Last check', 'Delete the account and all of its data now?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => void deleteNow() },
+            ]),
+        },
+      ],
+    );
+  };
+
+  const onRestore = async () => {
+    setBusy('restore');
+    setNotice(null);
+    try {
+      const ok = await ent.restore();
+      setNotice(ok ? 'Premium restored.' : 'No active Dog Better subscription is on this Apple ID.');
+    } catch (e) {
+      setNotice(humanizeError(e, 'Could not reach the App Store.'));
+    } finally {
+      setBusy(null);
+    }
   };
 
   const onSignOut = () => {
     Alert.alert('Sign out?', 'Your data stays safe in your account.', [
       { text: 'Stay', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => supabase.auth.signOut() },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          void forgetStoreIdentity().finally(() => supabase.auth.signOut());
+        },
+      },
     ]);
   };
 
@@ -117,7 +167,7 @@ export default function Settings() {
           ))}
         </View>
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
-          <SettingsRow icon="plus" label="Add another dog" detail="New profile, own plan, own photos" onPress={() => router.push(ADD_DOG_HREF)} last />
+          <SettingsRow icon="plus" label="Add another dog" detail={gate.allows('multi_dog') ? 'New profile, own plan, own photos' : 'Every dog in the house is part of Premium'} onPress={gate.openAddDog} last />
         </Surface>
       </Section>
 
@@ -140,15 +190,30 @@ export default function Settings() {
               <SettingsRow
                 icon="sparkle"
                 label={ent.entitlement.trial ? `Free trial, ${trialDaysLeft(ent.entitlement.expiresAt)} days left` : `Premium, ${ent.entitlement.plan === 'yearly' ? 'yearly' : 'monthly'}`}
-                detail={ent.entitlement.trial ? `Then ${PLANS[ent.entitlement.plan ?? 'yearly'].price} per ${PLANS[ent.entitlement.plan ?? 'yearly'].per}. Cancel any time.` : 'Plan, detective insights, medication, vet PDF, all dogs, no ads.'}
+                detail={
+                  ent.entitlement.trial
+                    ? `Then ${ent.offers[ent.entitlement.plan ?? 'yearly']?.priceString ?? PLANS[ent.entitlement.plan ?? 'yearly'].price} per ${PLANS[ent.entitlement.plan ?? 'yearly'].per}. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Will not renew.'}`
+                    : `Medication reader, clinic pack, every dog, unlimited Looks, full Learn, no partner cards. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Ends at the period end.'}`
+                }
               />
-              <SettingsRow icon="link" label="Manage subscription" detail="Opens your Apple subscriptions" onPress={() => Linking.openURL('https://apps.apple.com/account/subscriptions')} last={!__DEV__} />
-              {__DEV__ ? <SettingsRow icon="refresh" label="Dev: reset entitlement" tone="danger" onPress={() => ent.reset()} last /> : null}
+              <SettingsRow
+                icon="link"
+                label="Manage subscription"
+                detail="Opens your Apple subscriptions"
+                onPress={() => Linking.openURL(ent.entitlement.managementURL ?? 'https://apps.apple.com/account/subscriptions')}
+                last={!__DEV__}
+              />
+              {__DEV__ ? <SettingsRow icon="refresh" label="Dev: show paywall again" onPress={() => ent.reset()} last /> : null}
             </>
           ) : (
             <>
-              <SettingsRow icon="sparkle" label="Try Premium free for 7 days" detail="Adaptive plan, trick library, medication, clinic pack, every dog, no ads" onPress={() => router.push({ pathname: '/paywall', params: { from: 'settings' } })} />
-              <SettingsRow icon="refresh" label="Restore purchase" onPress={() => ent.restore()} last />
+              <SettingsRow
+                icon="sparkle"
+                label="Dog Better Premium"
+                detail="Medication reader, clinic pack, every dog, unlimited Looks, full Learn, no partner cards"
+                onPress={() => router.push({ pathname: '/paywall', params: { from: 'settings' } })}
+              />
+              <SettingsRow icon="refresh" label={busy === 'restore' ? 'Checking the App Store' : 'Restore purchase'} onPress={busy ? undefined : () => void onRestore()} last />
             </>
           )}
         </Surface>
@@ -173,7 +238,6 @@ export default function Settings() {
 
       <Section title="Help">
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
-          <SettingsRow icon="sparkle" label="Welcome screen" detail="The cartoon first-open. Tap the pup to change tricks." onPress={() => router.push({ pathname: '/(auth)/welcome', params: { preview: '1' } })} />
           <SettingsRow icon="learn" label="Help center" detail="How the score, detective, and care sheet work" onPress={() => router.push('/(app)/settings/help')} />
           <SettingsRow icon="mail" label="Contact support" detail={SUPPORT_EMAIL} onPress={() => contactSupport()} />
           <SettingsRow icon="sparkle" label="Suggest a feature" detail="Tell us what would make Dog Better better" onPress={() => contactSupport('Feature idea for Dog Better')} last />
@@ -182,7 +246,8 @@ export default function Settings() {
 
       <Section title="Your data">
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
-          <SettingsRow icon="share" label={busy === 'export' ? 'Preparing export' : 'Export everything'} detail="All dogs, logs, and records as a file you own" onPress={busy ? undefined : onExport} />
+          <SettingsRow icon="share" label={busy === 'export' ? 'Preparing export' : 'Export everything'} detail="All dogs, logs, records, walks, and posts as a file you own" onPress={busy ? undefined : onExport} />
+          <SettingsRow icon="person" label="Blocked people" detail="Who you have hidden from Community and Barks" onPress={() => router.push('/(app)/settings/blocked' as Href)} />
           <SettingsRow icon="shield" label="Privacy policy" onPress={() => router.push({ pathname: '/(app)/settings/legal/[doc]', params: { doc: 'privacy' } })} />
           <SettingsRow icon="document" label="Terms of use" onPress={() => router.push({ pathname: '/(app)/settings/legal/[doc]', params: { doc: 'terms' } })} last />
         </Surface>
@@ -192,7 +257,14 @@ export default function Settings() {
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
           <SettingsRow icon="person" label="Signed in as" detail={user?.email ?? user?.id ?? ''} />
           <SettingsRow icon="logout" label="Sign out" onPress={onSignOut} />
-          <SettingsRow icon="trash" label="Delete account" detail="Confirmed by email before anything is removed" tone="danger" onPress={onDeleteAccount} last />
+          <SettingsRow
+            icon="trash"
+            label={busy === 'delete' ? 'Deleting your account' : 'Delete account'}
+            detail="Removes every dog, log, photo, and post. Cannot be undone."
+            tone="danger"
+            onPress={busy ? undefined : onDeleteAccount}
+            last
+          />
         </Surface>
       </Section>
 

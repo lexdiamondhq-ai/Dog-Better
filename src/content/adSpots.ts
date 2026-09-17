@@ -1,5 +1,5 @@
 import type { IconName } from '@/components/ui/Icon';
-import { AFFILIATE_DISCLOSURE, INSURANCE_PARTNERS } from '@/content/partners';
+import { AFFILIATE_DISCLOSURE, INSURANCE_PARTNERS, LOCAL_SLOT_DISCLOSURE } from '@/content/partners';
 import { amazonSearch } from '@/lib/shop';
 import type { Tip } from '@/engine/guidance';
 
@@ -82,19 +82,19 @@ const POOL: Record<AdPlacement, AdSpot[]> = {
     },
   ],
   'track-end': [
-    {
-      id: 'track-insurance',
+    ...INSURANCE_PARTNERS.map<AdSpot>((p) => ({
+      id: `insurance-${p.id}`,
       icon: 'shield',
-      title: INSURANCE_PARTNERS[0].name,
-      line: INSURANCE_PARTNERS[0].tagline,
-      open: { kind: 'url', url: INSURANCE_PARTNERS[0].url },
-      disclosure: INSURANCE_PARTNERS[0].disclosure,
-    },
+      title: p.name,
+      line: p.tagline,
+      open: { kind: 'url', url: p.url },
+      disclosure: p.disclosure,
+    })),
     {
       id: 'track-shop',
       icon: 'link',
       title: 'Shop for this dog',
-      line: 'Food, chews, and gear. Amazon links with our tag.',
+      line: 'Food, chews, and gear sized to this dog, on Amazon.',
       open: { kind: 'shop' },
       disclosure: AFFILIATE_DISCLOSURE,
     },
@@ -105,9 +105,9 @@ const POOL: Record<AdPlacement, AdSpot[]> = {
       id: 'local-walker',
       icon: 'walk',
       title: 'Walkers near you',
-      line: 'A sitter or walker two streets over. Partner listings. Premium drops these.',
+      line: 'A sitter or walker two streets over.',
       open: { kind: 'url', url: mapsQuery('dog walker near me') },
-      disclosure: 'Local partner slot. Dog Better may earn a fee when a business is featured here.',
+      disclosure: LOCAL_SLOT_DISCLOSURE,
     },
     {
       id: 'local-groom',
@@ -115,7 +115,7 @@ const POOL: Record<AdPlacement, AdSpot[]> = {
       title: 'Grooms nearby',
       line: 'A wash and a nail trim without the drive across town.',
       open: { kind: 'url', url: mapsQuery('dog groomer near me') },
-      disclosure: 'Local partner slot. Dog Better may earn a fee when a business is featured here.',
+      disclosure: LOCAL_SLOT_DISCLOSURE,
     },
     {
       id: 'local-daycare',
@@ -123,7 +123,7 @@ const POOL: Record<AdPlacement, AdSpot[]> = {
       title: 'Daycare and drop-in',
       line: 'Places that take a dog for an afternoon, not a boarding week.',
       open: { kind: 'url', url: mapsQuery('dog daycare near me') },
-      disclosure: 'Local partner slot. Dog Better may earn a fee when a business is featured here.',
+      disclosure: LOCAL_SLOT_DISCLOSURE,
     },
   ],
   'walk-spots': [
@@ -131,17 +131,17 @@ const POOL: Record<AdPlacement, AdSpot[]> = {
       id: 'spot-patio',
       icon: 'meal',
       title: 'Dog-friendly patio',
-      line: 'A water bowl and a seat after the loop. Partner listings.',
+      line: 'A water bowl and a seat after the loop.',
       open: { kind: 'url', url: mapsQuery('dog friendly patio near me') },
-      disclosure: 'Local partner slot. Dog Better may earn a fee when a business is featured here.',
+      disclosure: LOCAL_SLOT_DISCLOSURE,
     },
     {
       id: 'spot-groom',
       icon: 'happy',
       title: 'Groom after the walk',
-      line: 'Muddy paws, a hose, and a dry-off. Nearby shops can pin this slot.',
+      line: 'Muddy paws, a hose, and a dry-off.',
       open: { kind: 'url', url: mapsQuery('dog groomer near me') },
-      disclosure: 'Local partner slot. Dog Better may earn a fee when a business is featured here.',
+      disclosure: LOCAL_SLOT_DISCLOSURE,
     },
   ],
 };

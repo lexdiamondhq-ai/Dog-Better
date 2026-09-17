@@ -9,6 +9,7 @@ import { GroupedList, Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { AFFILIATE_DISCLOSURE, SHOP_CATEGORIES, type ShopCategory } from '@/content/partners';
+import { track } from '@/lib/analytics';
 import { useDogs } from '@/lib/dogs';
 import { amazonSearch, shopForDog, sizeBand } from '@/lib/shop';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -27,7 +28,7 @@ export default function Shop() {
     <Screen>
       <ScreenHeader
         title="Shop"
-        subtitle={dog ? `Picked for ${dog.name}${size !== 'any' ? `, ${size} size` : ''}.` : 'Amazon links. We may earn a commission.'}
+        subtitle={dog ? `Picked for ${dog.name}${size !== 'any' ? `, ${size} size` : ''}. Opens Amazon.` : 'Opens Amazon.'}
         onBack={() => router.back()}
         large={false}
       />
@@ -41,7 +42,13 @@ export default function Shop() {
       <Section title="Amazon">
         <GroupedList>
           {shown.map((item, i) => (
-            <Tap key={item.id} onPress={() => Linking.openURL(amazonSearch(item.query))} haptic="selection">
+            <Tap
+              key={item.id}
+              onPress={() => {
+                void track('shop_click', { placement: 'shop', spot: item.id });
+                void Linking.openURL(amazonSearch(item.query));
+              }}
+              haptic="selection">
               <View style={[styles.row, i < shown.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text variant="bodyStrong">{item.title}</Text>
@@ -61,7 +68,7 @@ export default function Shop() {
           {AFFILIATE_DISCLOSURE}
         </Text>
         <Text variant="caption" tone="tertiary">
-          Opens Amazon. We do not see your cart. Scan a treat in the app before you feed something new.
+          We do not see your cart. Scan a treat in the app before you feed something new.
         </Text>
       </Surface>
     </Screen>

@@ -10,6 +10,7 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { useAuth } from '@/lib/auth';
 import { useBarks } from '@/lib/barks';
+import { moderationSheet } from '@/lib/moderation';
 import type { FeedPost } from '@/lib/pack';
 import { palette, space } from '@/theme/tokens';
 
@@ -36,6 +37,18 @@ export default function Barks() {
     ]);
   };
 
+  const report = (bark: FeedPost) => {
+    if (!user) return;
+    moderationSheet({
+      reporterId: user.id,
+      targetKind: 'post',
+      targetId: bark.id,
+      authorId: bark.author_id,
+      authorLabel: bark.author?.display_name ?? undefined,
+      onDone: () => feed.hide(bark.id),
+    });
+  };
+
   return (
     <View style={styles.root}>
       {feed.loading ? null : feed.barks.length === 0 ? (
@@ -44,7 +57,7 @@ export default function Barks() {
             No barks yet
           </Text>
           <Text variant="body" style={{ color: 'rgba(250,243,230,0.7)', textAlign: 'center' }}>
-            Short clips, 1 to 60 seconds. Record one and it lands in this scroll.
+            Short clips, up to 60 seconds, shared with every Dog Better member. Record one and it lands in this scroll.
           </Text>
           <Button label="Record a bark" icon="video" onPress={() => router.push('/(app)/new-bark')} />
         </View>
@@ -67,6 +80,7 @@ export default function Barks() {
               onToggleMute={() => setMuted((m) => !m)}
               onLike={() => feed.like(item)}
               onDelete={user && item.author_id === user.id ? () => remove(item) : undefined}
+              onReport={user && item.author_id !== user.id ? () => report(item) : undefined}
               height={height}
             />
           )}

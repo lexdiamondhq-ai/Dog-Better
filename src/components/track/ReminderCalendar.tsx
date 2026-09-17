@@ -46,10 +46,14 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
     if (!Number.isNaN(d.getTime())) setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
   };
 
+  // Land on the next dose once, after the reminders have hydrated. Deferred so it is not a render-time state write.
   useEffect(() => {
     if (landed || !nextDose) return;
-    showDose(nextDose);
-    setLanded(true);
+    const id = setTimeout(() => {
+      showDose(nextDose);
+      setLanded(true);
+    }, 0);
+    return () => clearTimeout(id);
   }, [landed, nextDose]);
 
   const markGiven = (r: Reminder) => {
