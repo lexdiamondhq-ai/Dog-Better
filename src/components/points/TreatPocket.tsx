@@ -19,16 +19,21 @@ export function TreatPocket({
   walksToday,
   hasWeight,
   onMeal,
+  slots,
 }: {
   mealKinds: Iterable<string>;
   walksToday: number;
   hasWeight: boolean;
   onMeal?: (kind: MealKind) => void;
+  /** When set, each biscuit follows a Today tab instead of the raw point count. */
+  slots?: boolean[];
 }) {
   const t = useTheme();
   const router = useRouter();
   const { pocket, todayCounts } = usePoints();
-  const next = pickJarNext({ pocket, mealKinds, walksToday, counts: todayCounts, hasWeight });
+  const filled = slots ?? Array.from({ length: JAR_POCKET }, (_, i) => i < pocket);
+  const held = Math.min(JAR_POCKET, filled.filter(Boolean).length);
+  const next = pickJarNext({ pocket: held, mealKinds, walksToday, counts: todayCounts, hasWeight });
 
   const go = () => {
     if (next.meal && onMeal) {
@@ -50,7 +55,7 @@ export function TreatPocket({
               key={i}
               style={[
                 styles.biscuit,
-                i < pocket
+                filled[i]
                   ? { backgroundColor: t.accent, borderColor: t.accentDeep }
                   : { backgroundColor: 'transparent', borderColor: t.border },
               ]}

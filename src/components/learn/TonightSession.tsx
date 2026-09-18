@@ -1,7 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 
+import { PackFlip } from '@/components/learn/PackFlip';
 import { EarnBadge } from '@/components/points/EarnBadge';
 import { Button } from '@/components/ui/Button';
 import { Surface } from '@/components/ui/Surface';
@@ -10,122 +11,66 @@ import { REWARDS } from '@/engine/rewards';
 import type { Session } from '@/engine/guidance';
 import { useDogs } from '@/lib/dogs';
 import { usePoints } from '@/lib/points';
-import { useTheme } from '@/theme/ThemeProvider';
-import { radius, space } from '@/theme/tokens';
-
-const LIMIT = 5 * 60;
-
-function clock(sec: number) {
-  const m = Math.floor(sec / 60);
-  const s = sec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
+import { space } from '@/theme/tokens';
 
 type Phase = 'ready' | 'play' | 'done';
 
 export function TonightSession({ session, footer }: { session: Session; footer?: ReactNode }) {
-  const t = useTheme();
   const { dog } = useDogs();
   const { award } = usePoints();
-  // Session progress is keyed by session id; a new session starts a fresh run without an effect.
-  type Run = { id: string; phase: Phase; step: number; left: number; paid: boolean };
-  const fresh = (id: string): Run => ({ id, phase: 'ready', step: 0, left: LIMIT, paid: false });
+  type Run = { id: string; phase: Phase; paid: boolean; correct: number; total: number; deal: number };
+  const fresh = (id: string): Run => ({ id, phase: 'ready', paid: false, correct: 0, total: 5, deal: 0 });
   const [run, setRun] = useState<Run>(() => fresh(session.id));
   const current = run.id === session.id ? run : fresh(session.id);
-  const { phase, step, left, paid } = current;
-  const patch = (fn: (prev: Run) => Partial<Run>) => setRun((prev) => {
-    const base = prev.id === session.id ? prev : fresh(session.id);
-    return { ...base, ...fn(base) };
-  });
-  const setPhase = (v: Phase) => patch(() => ({ phase: v }));
-  const setStep = (v: number | ((n: number) => number)) => patch((p) => ({ step: typeof v === 'function' ? v(p.step) : v }));
-  const setLeft = (v: number | ((n: number) => number)) => patch((p) => ({ left: typeof v === 'function' ? v(p.left) : v }));
-  const setPaid = (v: boolean) => patch(() => ({ paid: v }));
+  const { phase, paid, correct, total, deal } = current;
+  const patch = (fn: (prev: Run) => Partial<Run>) =>
+    setRun((prev) => {
+      const base = prev.id === session.id ? prev : fresh(session.id);
+      return { ...base, ...fn(base) };
+    });
 
-  const sessionId = session.id;
-  useEffect(() => {
-    if (phase !== 'play') return;
-    const id = setInterval(() => setRun((prev) => (prev.id === sessionId ? { ...prev, left: Math.max(0, prev.left - 1) } : prev)), 1000);
-    return () => clearInterval(id);
-  }, [phase, sessionId]);
-
-  const last = step >= session.steps.length - 1;
-  const fill = phase === 'ready' ? 0 : phase === 'done' ? 1 : Math.max((step + 1) / session.steps.length, (LIMIT - left) / LIMIT);
-
-  const finish = async () => {
+  const finish = async (score: number, hand: number) => {
     const got = await award({ kind: 'tip', key: `session:${session.id}`, dogId: dog?.id });
-    setPaid(!!got);
-    setPhase('done');
+    patch(() => ({ paid: !!got, correct: score, total: hand, phase: 'done' }));
   };
 
   return (
     <Surface kind="grouped" radiusSize="xl" style={{ gap: space.md }}>
       <Text variant="overline" tone="tertiary">
-        Tonight · 5 minutes · {session.steps.length} steps
+        Flip the pack · 5 cards
       </Text>
-      <Text variant="title">{session.title}</Text>
+      <Text variant="title">Meet a friend. Flip for their history.</Text>
 
       {phase === 'ready' ? (
         <Animated.View entering={FadeIn.duration(200)} style={{ gap: space.md }}>
           <Text variant="body" tone="secondary">
-            {session.why} One step at a time. Timer runs while you work.
+            Five cartoon dogs. Flip each one, answer one true thing about how their breed came to be. Finish the hand and a treat lands in the jar.
           </Text>
-          <Button label="Start the session" icon="play" size="lg" onPress={() => setPhase('play')} />
+          <Button label="Start the session" icon="play" size="lg" onPress={() => patch((p) => ({ phase: 'play', deal: p.deal + 1 }))} />
         </Animated.View>
       ) : null}
 
       {phase === 'play' ? (
-        <Animated.View entering={FadeInUp.duration(220)} style={{ gap: space.md }}>
-          <View style={styles.timerRow}>
-            <Text variant="display" style={{ color: left === 0 ? t.warn : t.text }}>
-              {clock(left)}
-            </Text>
-            <Text variant="caption" tone="tertiary">
-              Step {step + 1} of {session.steps.length}
-              {left === 0 ? ' · time is up, finish the last step' : ''}
-            </Text>
-          </View>
-          <View style={[styles.track, { backgroundColor: t.surface }]}>
-            <View style={[styles.fill, { width: `${Math.round(fill * 100)}%`, backgroundColor: t.brand }]} />
-          </View>
-          <View style={styles.dots}>
-            {session.steps.map((_, i) => (
-              <View key={i} style={[styles.pip, { backgroundColor: i <= step ? t.brand : t.surfaceStrong }]} />
-            ))}
-          </View>
-          <Text variant="headline">{session.steps[step]}</Text>
-          <View style={styles.row}>
-            {step > 0 ? <Button label="Back" kind="secondary" onPress={() => setStep((n) => n - 1)} /> : null}
-            {last ? (
-              <View style={[styles.row, { flex: 1 }]}>
-                <Button label="We did it" icon="check" style={{ flex: 1 }} onPress={finish} />
-                <EarnBadge points={REWARDS.tip.points} />
-              </View>
-            ) : (
-              <Button label="Next step" icon="chevron" style={{ flex: 1 }} onPress={() => setStep((n) => n + 1)} />
-            )}
-          </View>
+        <Animated.View entering={FadeInUp.duration(220)} style={{ marginHorizontal: -space.sm }}>
+          <PackFlip key={`${session.id}:${deal}`} seed={`${session.id}:${deal}`} onDone={(score, hand) => void finish(score, hand)} />
         </Animated.View>
       ) : null}
 
       {phase === 'done' ? (
         <Animated.View entering={FadeInUp.duration(240)} style={{ gap: space.md }}>
-          <Text variant="headline">We did it{dog?.name ? ` with ${dog.name}` : ''}</Text>
+          <Text variant="headline">
+            {correct} of {total}
+            {dog?.name ? ` · ${dog.name} would have notes` : ''}
+          </Text>
           <Text variant="body" tone="secondary">
             {paid
-              ? `Treats are in the jar. ${REWARDS.tip.points} for finishing tonight.`
-              : 'Already in the jar for today. Same session still counts as practice.'}
+              ? `The pack is back in the box. ${REWARDS.tip.points} in the jar for finishing.`
+              : 'Already in the jar for today. Another hand is still good practice.'}
           </Text>
           {paid ? <EarnBadge points={REWARDS.tip.points} /> : null}
-          <Button
-            label="Run it again"
-            kind="secondary"
-            onPress={() => {
-              setStep(0);
-              setLeft(LIMIT);
-              setPhase('play');
-            }}
-          />
+          <View style={styles.row}>
+            <Button label="Deal again" kind="secondary" onPress={() => patch((p) => ({ phase: 'play', deal: p.deal + 1, correct: 0 }))} />
+          </View>
           {footer}
         </Animated.View>
       ) : null}
@@ -134,10 +79,5 @@ export function TonightSession({ session, footer }: { session: Session; footer?:
 }
 
 const styles = StyleSheet.create({
-  timerRow: { gap: 4 },
-  track: { height: 8, borderRadius: radius.pill, overflow: 'hidden' },
-  fill: { height: 8, borderRadius: radius.pill },
-  dots: { flexDirection: 'row', gap: 6 },
-  pip: { width: 8, height: 8, borderRadius: 4 },
   row: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
 });

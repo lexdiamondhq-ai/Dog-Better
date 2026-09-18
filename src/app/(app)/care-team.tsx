@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Share, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, Share, StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/Button';
@@ -12,10 +12,12 @@ import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { HouseRoster } from '@/components/today/HouseRoster';
 import { SheetReadReview } from '@/components/care/SheetReadReview';
 import { applySheetRead } from '@/lib/applySheetRead';
 import type { SheetRead } from '@/engine/sheetMeds';
 import { requestNotifications } from '@/lib/notify';
+import { useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
 import { useEntitlements } from '@/lib/entitlements';
@@ -23,7 +25,7 @@ import { humanizeError } from '@/lib/errors';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
 import { readVisitSheet } from '@/lib/readVisitSheet';
-import { useReminders } from '@/lib/reminders';
+import { rosterMedLabel, useReminders } from '@/lib/reminders';
 import { isImagePath } from '@/lib/media';
 import { askVetVisitSource, uploadVetVisit, useVetVisits, type VisitSource } from '@/lib/visits';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -49,6 +51,13 @@ export default function CareTeam() {
   const { weightUnit } = usePreferences();
   const visits = useVetVisits(dog?.id);
   const reminders = useReminders(dog?.id);
+  const activity = useDogActivity(dog);
+  const meals = activity.mealsToday.filter((m) => m.kind === 'breakfast' || m.kind === 'dinner').length;
+  const overdue = reminders.dueToday.filter((r) => {
+    const [h, m] = r.time.split(':').map((n) => parseInt(n, 10));
+    return h * 60 + m < new Date().getHours() * 60 + new Date().getMinutes();
+  });
+  const cards = visits.visits.filter((v) => isImagePath(v.storage_path));
   const [copied, setCopied] = useState(false);
   const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
@@ -152,6 +161,26 @@ export default function CareTeam() {
           ) : undefined
         }
       />
+
+      <HouseRoster
+        dots={[
+          { icon: 'meal', label: 'Fed', value: meals ? `${meals}/2` : 'Not yet', tone: meals >= 2 ? 'good' : meals ? 'warn' : 'neutral' },
+          { icon: 'pill', label: 'Dose', value: rosterMedLabel(reminders.nextMed), tone: reminders.nextMed ? 'warn' : 'good' },
+          { icon: 'clock', label: 'Due', value: overdue.length ? `${overdue.length} late` : 'Clear', tone: overdue.length ? 'bad' : 'good' },
+        ]}
+      />
+
+      {cards.length ? (
+        <Section title="Cards and visits">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.film}>
+            {cards.map((v) => (
+              <Tap key={v.id} onPress={() => router.push({ pathname: '/(app)/photo/[id]', params: { id: v.id } })} haptic="selection">
+                <Image source={{ uri: v.url }} style={styles.card} contentFit="cover" />
+              </Tap>
+            ))}
+          </ScrollView>
+        </Section>
+      ) : null}
 
       <Animated.View entering={FadeInUp.delay(60).duration(260)}>
         <Surface kind="grouped" style={{ gap: space.md }}>
@@ -281,4 +310,6 @@ const styles = StyleSheet.create({
   visit: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   visitImg: { width: 52, height: 52, borderRadius: 12 },
   visitFile: { alignItems: 'center', justifyContent: 'center' },
+  film: { gap: space.sm, paddingRight: space.sm },
+  card: { width: 148, height: 96, borderRadius: radius.md },
 });

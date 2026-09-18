@@ -170,6 +170,16 @@ export default function LookScreen() {
                 <Text variant="caption" tone="tertiary">
                   {result.caution}
                 </Text>
+                {result.hasDog === false ? (
+                  <Button
+                    label="Retake with the dog in frame"
+                    icon="camera"
+                    onPress={() => {
+                      setUri(null);
+                      setResult(null);
+                    }}
+                  />
+                ) : null}
                 {result.source === 'local' && result.reason === 'quota' ? (
                   <Text variant="caption" tone="secondary">
                     Three model Looks a day are free. Premium raises that to forty.

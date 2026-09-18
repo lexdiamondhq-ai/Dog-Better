@@ -18,7 +18,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
 
 /**
- * First thing you see. A cartoon stoop and a pup who cycles tricks. Sign-in stays at the bottom.
+ * First thing you see. The brand pup walks in, then a few tricks. Sign-in stays at the bottom.
  */
 export default function Welcome() {
   const t = useTheme();
@@ -69,7 +69,7 @@ export default function Welcome() {
         style={StyleSheet.absoluteFill}
       />
       <Animated.View entering={FadeIn.duration(900)} style={styles.glow} pointerEvents="none">
-        <LinearGradient colors={[night ? 'rgba(242,168,29,0.42)' : 'rgba(242,168,29,0.38)', 'rgba(242,168,29,0)']} style={styles.glowInner} />
+        <LinearGradient colors={[night ? 'rgba(242,168,29,0.18)' : 'rgba(242,168,29,0.22)', 'rgba(242,168,29,0)']} style={styles.glowInner} />
       </Animated.View>
       <Animated.View entering={FadeIn.duration(700)} style={styles.pawLeft} pointerEvents="none">
         <Image source={require('@/assets/brand/paw-left.png')} style={{ width: 220, height: 220, opacity: night ? 0.16 : 0.42 }} />
@@ -90,7 +90,7 @@ export default function Welcome() {
         <View style={styles.hero}>
           <View style={styles.lockup}>
             <OnboardingMascot key={play} cycle size="lg" labeled />
-            <Animated.View entering={FadeInDown.duration(320).delay(1500)}>
+            <Animated.View entering={FadeInDown.duration(360).delay(2200)}>
               <Image
                 source={require('@/assets/brand/wordmark-tagline.png')}
                 style={styles.wordmark}
@@ -98,9 +98,9 @@ export default function Welcome() {
                 tintColor={night ? palette.furLight : undefined}
               />
             </Animated.View>
-            <Animated.View entering={FadeInDown.duration(320).delay(1650)}>
+            <Animated.View entering={FadeInDown.duration(360).delay(2240)}>
               <Text variant="body" tone="secondary" align="center">
-                A cartoon pup walks in. Then a sit, a speak, and a flop.
+                Daily care, health, and happier walks in one place.
               </Text>
             </Animated.View>
           </View>
@@ -111,7 +111,7 @@ export default function Welcome() {
             This is the first-open screen. Sign-in waits under here for new people.
           </Text>
         ) : (
-          <Animated.View entering={FadeInUp.duration(400).delay(1700)} style={styles.actions}>
+          <Animated.View entering={FadeInUp.duration(420).delay(2360)} style={styles.actions}>
             {appleAvailable ? <AuthButton icon="apple" label="Continue with Apple" onPress={() => run('apple')} busy={busy === 'apple'} disabled={busy !== null} look="dark" /> : null}
             <AuthButton icon="google" label="Continue with Google" onPress={() => run('google')} busy={busy === 'google'} disabled={busy !== null} look="light" />
             <AuthButton icon="mail" label="Continue with email" onPress={() => router.push('/(auth)/sign-in')} disabled={busy !== null} look="accent" />
@@ -172,13 +172,13 @@ function GoogleMark() {
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: space.xl, overflow: 'visible' },
   back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  glow: { position: 'absolute', top: -80, left: -60, right: -60, height: 460 },
-  glowInner: { flex: 1, borderRadius: 300 },
+  glow: { position: 'absolute', top: -140, left: 0, right: 0, height: 280 },
+  glowInner: { flex: 1 },
   pawLeft: { position: 'absolute', left: -80, bottom: 200, transform: [{ rotate: '-14deg' }] },
   pawRight: { position: 'absolute', right: -70, top: 120, transform: [{ rotate: '18deg' }] },
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
-  lockup: { alignItems: 'center', gap: space.md, overflow: 'visible' },
-  wordmark: { width: 300, height: 72 },
+  lockup: { alignItems: 'center', gap: space.sm, overflow: 'visible' },
+  wordmark: { width: 280, height: 64 },
   actions: { gap: space.sm },
   button: { height: 56, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md },
   buttonIcon: { width: 32, alignItems: 'center', justifyContent: 'center' },

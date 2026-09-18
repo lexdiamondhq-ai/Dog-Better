@@ -58,15 +58,18 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
     if (!Number.isNaN(d.getTime())) setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
   };
 
-  // Land on the next dose once, after the reminders have hydrated. Deferred so it is not a render-time state write.
+  // Highlight the next dose if it is in this month. Do not jump the grid to another month on open.
   useEffect(() => {
     if (landed || !nextDose) return;
     const id = setTimeout(() => {
-      showDose(nextDose);
+      const d = new Date(`${nextDose.date}T12:00:00`);
+      const here =
+        !Number.isNaN(d.getTime()) && d.getFullYear() === cursor.getFullYear() && d.getMonth() === cursor.getMonth();
+      if (here) showDose(nextDose);
       setLanded(true);
     }, 0);
     return () => clearTimeout(id);
-  }, [landed, nextDose]);
+  }, [cursor, landed, nextDose]);
 
   const markGiven = (r: Reminder) => {
     showDose(reminders.complete(r.id, 'medication'));
@@ -114,9 +117,11 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
         </View>
         <View style={styles.week}>
           {WEEK.map((d, i) => (
-            <Text key={`${d}${i}`} variant="micro" tone="tertiary" style={styles.cell}>
-              {d}
-            </Text>
+            <View key={`${d}${i}`} style={styles.cellWrap}>
+              <Text variant="micro" tone="tertiary" style={styles.cellLabel}>
+                {d}
+              </Text>
+            </View>
           ))}
         </View>
         <View style={styles.grid}>
@@ -124,16 +129,18 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
             const on = d.date === picked;
             const marks = reminders.marked.get(d.date) ?? [];
             return (
-              <Tap key={d.date} onPress={() => setPicked(d.date)} haptic="selection" style={[styles.cell, on && { backgroundColor: t.brand, borderRadius: radius.sm }]}>
-                <Text variant="label" style={{ color: on ? t.onBrand : d.inMonth ? t.text : t.textTertiary }}>
-                  {d.day}
-                </Text>
-                <View style={styles.dots}>
-                  {marks.slice(0, 3).map((c) => (
-                    <View key={c} style={[styles.dot, { backgroundColor: on ? t.onBrand : c }]} />
-                  ))}
-                </View>
-              </Tap>
+              <View key={d.date} style={styles.cellWrap}>
+                <Tap onPress={() => setPicked(d.date)} haptic="selection" style={[styles.cell, on && { backgroundColor: t.brand, borderRadius: radius.sm }]}>
+                  <Text variant="label" style={{ color: on ? t.onBrand : d.inMonth ? t.text : t.textTertiary }}>
+                    {d.day}
+                  </Text>
+                  <View style={styles.dots}>
+                    {marks.slice(0, 3).map((c, idx) => (
+                      <View key={`${c}-${idx}`} style={[styles.dot, { backgroundColor: on ? t.onBrand : c }]} />
+                    ))}
+                  </View>
+                </Tap>
+              </View>
             );
           })}
         </View>
@@ -284,7 +291,9 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.sm },
   week: { flexDirection: 'row' },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: '14.28%', alignItems: 'center', justifyContent: 'center', minHeight: 40, gap: 3 },
+  cellWrap: { width: '14.2857%' },
+  cell: { width: '100%', alignItems: 'center', justifyContent: 'center', minHeight: 44, gap: 3, paddingVertical: 4 },
+  cellLabel: { textAlign: 'center', width: '100%' },
   dots: { flexDirection: 'row', gap: 2, minHeight: 5 },
   dot: { width: 5, height: 5, borderRadius: 2.5 },
   event: { flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },

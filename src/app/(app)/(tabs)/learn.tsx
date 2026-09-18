@@ -53,7 +53,7 @@ export default function Learn() {
   return (
     <View style={{ flex: 1 }}>
     <Screen dock refreshing={a.refreshing} onRefresh={a.refresh}>
-      <ScreenHeader title={dog?.name ?? 'Learn'} subtitle="A five-minute session. One step at a time." />
+      <ScreenHeader title={dog?.name ?? 'Learn'} subtitle="Flip five cards. Know a little more." />
 
       <Animated.View entering={FadeInUp.duration(280)} layout={LinearTransition}>
         <TonightSession session={session} footer={<ShopNote topic={session.topic} />} />

@@ -28,6 +28,7 @@ type Api = {
   lastAward: PointEntry | null;
   lastLevelUp: BetterLevel | null;
   award: (input: AwardInput) => Promise<PointEntry | null>;
+  revoke: (input: AwardInput) => Promise<boolean>;
   clearToast: () => void;
   clearLevelUp: () => void;
 };
@@ -43,9 +44,14 @@ const Ctx = createContext<Api>({
   lastAward: null,
   lastLevelUp: null,
   award: async () => null,
+  revoke: async () => false,
   clearToast: () => {},
   clearLevelUp: () => {},
 });
+
+function storedKey(kind: RewardKind, key: string, today: string) {
+  return REWARDS[kind].dailyCap ? `${today}:${key}` : key;
+}
 
 function storeKey(userId: string) {
   return `dogbetter.points.v1.${userId}`;
@@ -130,7 +136,7 @@ export function PointsProvider({ children }: PropsWithChildren) {
       const spec = REWARDS[input.kind];
       const now = new Date().toISOString();
       const today = clockDay || localDay();
-      const key = spec.dailyCap ? `${today}:${input.key}` : input.key;
+      const key = storedKey(input.kind, input.key, today);
       const existing = entries.find((e) => e.key === key);
       if (existing) return null;
       const todayKind = entries.filter((e) => e.kind === input.kind && entryDay(e.at) === today).length;
@@ -151,6 +157,22 @@ export function PointsProvider({ children }: PropsWithChildren) {
       if (before.name !== after.name) setLastLevelUp(after);
       await persist(next);
       return entry;
+    },
+    [clockDay, entries, persist, userId],
+  );
+
+  const revoke = useCallback(
+    async (input: AwardInput) => {
+      if (!userId) return false;
+      const today = clockDay || localDay();
+      const key = storedKey(input.kind, input.key, today);
+      const hit = entries.find((e) => e.key === key);
+      if (!hit) return false;
+      const next = entries.filter((e) => e.id !== hit.id);
+      setEntries(next);
+      setLastAward((prev) => (prev?.id === hit.id ? null : prev));
+      await persist(next);
+      return true;
     },
     [clockDay, entries, persist, userId],
   );
@@ -176,8 +198,8 @@ export function PointsProvider({ children }: PropsWithChildren) {
   const total = useMemo(() => entries.reduce((sum, e) => sum + e.points, 0), [entries]);
 
   const value = useMemo<Api>(
-    () => ({ loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, clearToast, clearLevelUp }),
-    [loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, clearToast, clearLevelUp],
+    () => ({ loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, revoke, clearToast, clearLevelUp }),
+    [loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, revoke, clearToast, clearLevelUp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

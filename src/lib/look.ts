@@ -1,5 +1,6 @@
 import { callAi, photoToBase64, type AiReason, type AiSource } from './ai';
 import type { Dog } from './database.types';
+import { shouldRefuseLook } from './lookInterpret';
 
 export type LookFocus = 'coat' | 'paws' | 'ears' | 'eyes' | 'body' | 'whats';
 
@@ -18,6 +19,8 @@ export type LookResult = {
   checks: string[];
   next: string;
   caution: string;
+  /** False when the model saw no living dog. Local checklists assume they will photograph the dog. */
+  hasDog: boolean;
   /** 'ai' when a model looked at the photo, 'local' when this is the built-in checklist. */
   source: AiSource;
   /** Why the model did not run, when source is 'local'. */
@@ -35,6 +38,7 @@ export function localLook(focus: LookFocus, dog: Dog | null, reason?: AiReason):
   const allergy = dog?.allergies?.length ? `Known sensitivities: ${dog.allergies.join(', ')}.` : null;
   const base = {
     source: 'local' as const,
+    hasDog: true,
     reason,
     caution: 'This is a photo helper, not a diagnosis. If they seem in pain, cannot breathe easily, collapse, or eat something toxic, go to a vet now.',
   };
@@ -123,7 +127,35 @@ export function localLook(focus: LookFocus, dog: Dog | null, reason?: AiReason):
   };
 }
 
-type ModelLook = { title?: string; summary?: string; checks?: string[]; next?: string; caution?: string };
+type ModelLook = {
+  hasDog?: boolean;
+  seen?: string;
+  title?: string;
+  summary?: string;
+  checks?: string[];
+  next?: string;
+  caution?: string;
+};
+
+export function noDogLook(dog: Dog | null, seen?: string): LookResult {
+  const name = dog?.name ?? 'your dog';
+  const what = seen?.trim();
+  return {
+    hasDog: false,
+    source: 'ai',
+    title: 'No dog in this photo',
+    summary: what
+      ? `This looks like ${what}, not ${name}. Look only works when the dog is in the frame.`
+      : `Look only works when ${name} is in the frame. This photo does not show a dog.`,
+    checks: [
+      'Get the dog in daylight, close enough to fill most of the picture.',
+      'Point at the spot you care about: coat, paws, ears, eyes, or the whole body.',
+      'A toy, a person, a room, or a random object will not get a health read.',
+    ],
+    next: `Retake the photo with ${name} in it.`,
+    caution: 'This is a photo helper, not a diagnosis.',
+  };
+}
 
 /**
  * Ask the model through the `ai` Edge Function. Quota and Premium are enforced there; when the
@@ -134,21 +166,44 @@ export async function lookAtPhoto(uri: string, focus: LookFocus, dog: Dog | null
   try {
     b64 = await photoToBase64(uri);
   } catch {
-    return localLook(focus, dog, 'model_error');
+    return unreadLook(dog, 'model_error');
   }
   const prompt = LOOK_FOCUSES.find((f) => f.id === focus)?.prompt ?? '';
   const res = await callAi<ModelLook>({ kind: 'look', prompt, dogLine: dogLine(dog), allergies: dog?.allergies ?? [], imageBase64: b64 });
-  if (!res.ok) return localLook(focus, dog, res.reason);
+  if (!res.ok) return unreadLook(dog, res.reason);
 
   const fallback = localLook(focus, dog);
   const parsed = res.result;
-  if (!parsed.summary || !Array.isArray(parsed.checks)) return localLook(focus, dog, 'model_error');
+  if (shouldRefuseLook(parsed)) {
+    const empty = noDogLook(dog, typeof parsed.seen === 'string' ? parsed.seen : undefined);
+    return { ...empty, summary: parsed.summary && parsed.hasDog === false ? parsed.summary : empty.summary };
+  }
+  if (!parsed.summary || !Array.isArray(parsed.checks)) return unreadLook(dog, 'model_error');
   return {
     source: 'ai',
+    hasDog: true,
     title: parsed.title || fallback.title,
     summary: parsed.summary,
     checks: parsed.checks.slice(0, 6),
     next: parsed.next || fallback.next,
     caution: parsed.caution || fallback.caution,
+  };
+}
+
+export function unreadLook(dog: Dog | null, reason?: AiReason): LookResult {
+  const name = dog?.name ?? 'your dog';
+  return {
+    hasDog: false,
+    source: 'local',
+    reason,
+    title: 'Could not read this photo',
+    summary: `Nothing in this frame was checked. This is not a read of ${name}.`,
+    checks: [
+      'Try again on a connection.',
+      `Retake with ${name} filling most of the frame.`,
+      'Daylight, close, and still.',
+    ],
+    next: `Retake with ${name} in the picture.`,
+    caution: 'This is a photo helper, not a diagnosis.',
   };
 }

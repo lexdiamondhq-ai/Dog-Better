@@ -6,7 +6,8 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
  * app bundle. Free users get FREE_LOOKS_PER_DAY Look calls; Premium (profiles.premium_until, written by
  * the RevenueCat webhook) gets PREMIUM_LOOKS_PER_DAY. Visit-sheet reads are Premium only.
  *
- * Responses always carry `source` so the UI can say honestly whether a model looked at the photo.
+ * Look is two model calls: first a dog-gate that never sees the household breed, then a health
+ * read only if a living dog is in the frame.
  */
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -16,7 +17,7 @@ const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY');
 const MODEL = Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini';
 const FREE_LOOKS_PER_DAY = 3;
 const PREMIUM_LOOKS_PER_DAY = 40;
-const MAX_IMAGE_B64 = 6_000_000; // ~4.5 MB decoded
+const MAX_IMAGE_B64 = 6_000_000;
 
 type LookBody = { kind: 'look'; prompt: string; dogLine: string; allergies: string[]; imageBase64: string };
 type SheetBody = { kind: 'sheet'; dogLine: string; text?: string; imageBase64?: string };
@@ -25,11 +26,35 @@ type Body = LookBody | SheetBody;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+const GATE_SYSTEM =
+  'You only decide what is in a photo. Return JSON only: {"hasDog":boolean,"seen":"two to five words"}. ' +
+  'hasDog is true only if a living dog is clearly visible (muzzle, ear, eye, paw, or body). ' +
+  'False for laptops, phones, furniture, people, rooms, food, toys, drawings, cartoons, and other animals. ' +
+  'seen is the main subject you actually see, such as "silver laptop" or "black dog". ' +
+  'Do not invent a pet. Do not name a breed unless a dog is visible.';
+
 const LOOK_SYSTEM =
-  'You help a dog owner look at a photo. You are not a veterinarian. Return JSON only: {"title","summary","checks":[string],"next","caution"}. Be specific about what you see. Never invent a diagnosis. Urge a vet for pain, breathing, eye injuries, tight belly, or toxins.';
+  'You help a dog owner look at a photo of a dog that is already confirmed to be in the frame. You are not a veterinarian. ' +
+  'Return JSON only: {"hasDog":true,"seen","title","summary","checks":[string],"next","caution"}. ' +
+  'Describe only what you see. Household dog is context. Never invent a diagnosis. ' +
+  'Urge a vet for pain, breathing, eye injuries, tight belly, or toxins.';
 
 const SHEET_SYSTEM =
   'Extract medications and feeding times from a veterinary discharge. You are not a veterinarian. Never invent a drug, dose, time, or duration. If a field is not written, omit it or use null. Do not default times to 08:00 or days to 7. If the sheet lists tablet strength and a separate give amount, put the give amount in dose and the strength in note. JSON only: {"medications":[{"name","dose":null,"times":[],"withFood":false,"days":null,"note":null}],"meals":[{"time":"HH:MM","label":"Breakfast","days":null}]}';
+
+function emptyLook(seen: string) {
+  return {
+    hasDog: false,
+    seen,
+    title: 'No dog in this photo',
+    summary: seen
+      ? `This photo shows ${seen}, not a dog. Look needs the dog in the frame.`
+      : 'Look needs the dog in the frame. This photo does not show a dog.',
+    checks: ['Get the dog in daylight.', 'Fill most of the frame with the dog or the spot you care about.', 'Hold still.'],
+    next: 'Retake with the dog in the picture.',
+    caution: 'This is a photo helper, not a diagnosis.',
+  };
+}
 
 async function askModel(system: string, content: unknown[], temperature: number) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -90,15 +115,30 @@ Deno.serve(async (req) => {
 
   try {
     if (body.kind === 'look') {
+      const gate = await askModel(
+        GATE_SYSTEM,
+        [
+          { type: 'text', text: 'Is a living dog clearly visible? What is the main subject?' },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${body.imageBase64}` } },
+        ],
+        0,
+      );
+      const hasDog = gate.hasDog === true;
+      const seen = typeof gate.seen === 'string' ? gate.seen : '';
+      if (!hasDog) return json({ ok: true, source: 'ai', result: emptyLook(seen) });
+
       const result = await askModel(
         LOOK_SYSTEM,
         [
-          { type: 'text', text: `${body.prompt} Dog: ${body.dogLine}. Allergies: ${body.allergies?.join(', ') || 'none logged'}.` },
+          {
+            type: 'text',
+            text: `${body.prompt} A living dog is already confirmed in this photo. Household context only: ${body.dogLine}. Allergies on file: ${body.allergies?.join(', ') || 'none logged'}.`,
+          },
           { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${body.imageBase64}` } },
         ],
-        0.3,
+        0.2,
       );
-      return json({ ok: true, source: 'ai', result });
+      return json({ ok: true, source: 'ai', result: { ...result, hasDog: true, seen: seen || result.seen } });
     }
 
     const content: unknown[] = [];
