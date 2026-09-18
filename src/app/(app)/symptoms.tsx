@@ -15,6 +15,7 @@ import { DURATIONS, runTriage, SYMPTOM_GROUPS, SYMPTOMS, type Duration, type Sym
 import { useAuth } from '@/lib/auth';
 import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
+import { humanizeError } from '@/lib/errors';
 import { usePoints } from '@/lib/points';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -44,6 +45,7 @@ export default function Symptoms() {
   const [result, setResult] = useState<TriageResult | null>(null);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [unsure, setUnsure] = useState(false);
 
   const toggle = (id: SymptomId) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -58,19 +60,26 @@ export default function Symptoms() {
   const save = async () => {
     if (!user || !dog || !result) return;
     setSaving(true);
-    await supabase.from('health_logs').insert({
-      dog_id: dog.id,
-      owner_id: user.id,
-      symptoms: picked.length ? picked : ['not_sure'],
-      severity,
-      duration,
-      triage: result.triage,
-      guidance: result.guidance,
-      notes: notes.trim() || null,
-    });
-    await award({ kind: 'health', key: `health:${dog.id}:${Date.now()}`, dogId: dog.id });
-    setSaving(false);
-    setSaved(true);
+    setSaveError(null);
+    try {
+      const { error } = await supabase.from('health_logs').insert({
+        dog_id: dog.id,
+        owner_id: user.id,
+        symptoms: picked.length ? picked : ['not_sure'],
+        severity,
+        duration,
+        triage: result.triage,
+        guidance: result.guidance,
+        notes: notes.trim() || null,
+      });
+      if (error) throw error;
+      await award({ kind: 'health', key: `health:${dog.id}:${Date.now()}`, dogId: dog.id });
+      setSaved(true);
+    } catch (e) {
+      setSaveError(humanizeError(e, 'Could not save this to the health record.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const reset = () => {
@@ -81,6 +90,7 @@ export default function Symptoms() {
     setNotes('');
     setResult(null);
     setSaved(false);
+    setSaveError(null);
     setUnsure(false);
   };
 
@@ -186,7 +196,7 @@ export default function Symptoms() {
 
       {step === 'result' && result ? (
         <Animated.View key="result" entering={FadeInUp.duration(260)} style={{ gap: space.lg }}>
-          <Verdict result={result} vetPhone={dog?.vet_phone ?? null} />
+          <Verdict result={result} vetPhone={dog?.vet_phone ?? null} onEmergency={() => router.push('/(app)/emergency')} />
 
           {result.reasons.length ? (
             <Section title="Why">
@@ -204,11 +214,11 @@ export default function Symptoms() {
           ) : null}
 
           {result.tips.length ? (
-            <Section title="At home">
+            <Section title={result.triage === 'red' ? 'Do this now' : 'At home'}>
               {result.tips.map((tip) => (
                 <Surface key={tip.label} kind="tonal" style={{ gap: space.xs }}>
                   <Text variant="headline">{tip.label}</Text>
-                  <Text variant="body">{tip.homeTip}</Text>
+                  {tip.homeTip ? <Text variant="body">{tip.homeTip}</Text> : null}
                   <View style={styles.watch}>
                     <Icon name="warning" size={14} color={t.warn} />
                     <Text variant="caption" tone="secondary" style={{ flex: 1 }}>
@@ -222,6 +232,11 @@ export default function Symptoms() {
 
           <View style={{ gap: space.sm }}>
             <Button label={saved ? 'Logged to health record' : `Log this  +${REWARDS.health.points}`} icon={saved ? 'check' : 'plus'} onPress={save} loading={saving} disabled={saved} kind={saved ? 'secondary' : 'primary'} />
+            {saveError ? (
+              <Text variant="caption" tone="bad">
+                {saveError}
+              </Text>
+            ) : null}
             <Button label="Check something else" kind="ghost" onPress={reset} />
           </View>
           <Text variant="caption" tone="tertiary" align="center">
@@ -233,7 +248,7 @@ export default function Symptoms() {
   );
 }
 
-function Verdict({ result, vetPhone }: { result: TriageResult; vetPhone: string | null }) {
+function Verdict({ result, vetPhone, onEmergency }: { result: TriageResult; vetPhone: string | null; onEmergency: () => void }) {
   const t = useTheme();
   const tone: Record<Triage, { bg: string; fg: string; icon: IconName; label: string }> = {
     green: { bg: t.good, fg: '#F4FBF5', icon: 'happy', label: 'Home care' },
@@ -264,6 +279,14 @@ function Verdict({ result, vetPhone }: { result: TriageResult; vetPhone: string 
           <Icon name="vet" size={18} color={v.bg} />
           <Text variant="bodyStrong" style={{ color: v.bg }}>
             {vetPhone ? 'Call your vet' : 'Find an emergency vet'}
+          </Text>
+        </Tap>
+      ) : null}
+      {result.triage === 'red' ? (
+        <Tap onPress={onEmergency} haptic="heavy" style={[styles.call, { backgroundColor: 'rgba(255,255,255,0.92)' }]}>
+          <Icon name="emergency" size={18} color={v.bg} />
+          <Text variant="bodyStrong" style={{ color: v.bg }}>
+            Open emergency mode
           </Text>
         </Tap>
       ) : null}

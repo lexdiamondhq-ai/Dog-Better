@@ -21,6 +21,7 @@ import { PointsProvider } from '@/lib/points';
 import { PreferencesProvider } from '@/lib/preferences';
 import { CirclesProvider } from '@/lib/circles';
 import { InboxProvider } from '@/lib/inbox';
+import { watchReminderOpens } from '@/lib/notify';
 import { RemindersProvider } from '@/lib/reminders';
 import { WalksProvider } from '@/lib/WalksProvider';
 import { LevelUp } from '@/components/points/LevelUp';
@@ -82,7 +83,7 @@ export default function RootLayout() {
 function Gate() {
   const t = useTheme();
   const { session, ready } = useAuth();
-  const { dogs, loaded, offline, refresh } = useDogs();
+  const { dogs, loaded, offline, refresh, setActiveDog } = useDogs();
   const ent = useEntitlements();
   const segments = useSegments();
   const params = useGlobalSearchParams<{ mode?: string | string[]; preview?: string | string[] }>();
@@ -92,6 +93,14 @@ function Gate() {
   const [stalled, setStalled] = useState(false);
 
   const decided = ready && (!session || loaded) && ent.loaded;
+
+  useEffect(() => {
+    return watchReminderOpens(({ dogId }) => {
+      if (!session) return;
+      if (dogId) setActiveDog(dogId);
+      router.push('/(app)/calendar');
+    });
+  }, [session, router, setActiveDog]);
 
   // Signed in, no network, and no cached roster: do not guess. Show a retry instead of onboarding.
   const waiting = !decided && ready && !!session;
@@ -119,6 +128,8 @@ function Gate() {
       if (!inAuth) router.replace('/(auth)/welcome');
     } else if (dogs.length === 0) {
       if (!inOnboarding) router.replace('/onboarding');
+    } else if (inPaywall) {
+      // Trial offer after first dog, or a feature gate. Stay until Skip or a purchase.
     } else if (addingAnother) {
       // Household already has a dog and asked to add one. Stay on onboarding.
     } else if (inAuth && previewWelcome) {
@@ -126,7 +137,7 @@ function Gate() {
     } else if (inOnboarding || (inAuth && !ent.paywallSeen)) {
       // First dog just created: show the trial offer once, with Skip, before landing in the app.
       router.replace(ent.paywallSeen ? '/(app)/(tabs)/today' : { pathname: '/paywall', params: { from: 'onboarding' } });
-    } else if (inAuth || (root === undefined && !inPaywall)) {
+    } else if (inAuth || root === undefined) {
       router.replace('/(app)/(tabs)/today');
     }
     SplashScreen.hideAsync();

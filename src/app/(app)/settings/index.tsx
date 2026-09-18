@@ -18,6 +18,7 @@ import { usePoints } from '@/lib/points';
 import { forgetStoreIdentity, PLANS, trialDaysLeft, useEntitlements } from '@/lib/entitlements';
 import { humanizeError } from '@/lib/errors';
 import { exportAllData } from '@/lib/exportData';
+import { wipeRemindersForUser } from '@/lib/reminders';
 import { changeDogPhoto } from '@/lib/media';
 import { usePreferences } from '@/lib/preferences';
 import { supabase } from '@/lib/supabase';
@@ -67,12 +68,14 @@ export default function Settings() {
   };
 
   const deleteNow = async () => {
+    if (!user) return;
     setBusy('delete');
     setNotice(null);
     try {
       const { data, error } = await supabase.functions.invoke<{ ok?: boolean; error?: string }>('delete-account', { method: 'POST' });
       if (error || !data?.ok) throw error ?? new Error(data?.error ?? 'delete_failed');
       void track('account_deleted');
+      await wipeRemindersForUser(user.id);
       await forgetStoreIdentity();
       await supabase.auth.signOut();
     } catch (e) {
@@ -193,7 +196,7 @@ export default function Settings() {
                 detail={
                   ent.entitlement.trial
                     ? `Then ${ent.offers[ent.entitlement.plan ?? 'yearly']?.priceString ?? PLANS[ent.entitlement.plan ?? 'yearly'].price} per ${PLANS[ent.entitlement.plan ?? 'yearly'].per}. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Will not renew.'}`
-                    : `Medication reader, clinic pack, every dog, unlimited Looks, full Learn, no partner cards. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Ends at the period end.'}`
+                    : `Medication reader, clinic pack, every dog, forty Looks a day, full Learn, no partner cards. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Ends at the period end.'}`
                 }
               />
               <SettingsRow
@@ -210,7 +213,7 @@ export default function Settings() {
               <SettingsRow
                 icon="sparkle"
                 label="Dog Better Premium"
-                detail="Medication reader, clinic pack, every dog, unlimited Looks, full Learn, no partner cards"
+                detail="Medication reader, clinic pack, every dog, forty Looks a day, full Learn, no partner cards"
                 onPress={() => router.push({ pathname: '/paywall', params: { from: 'settings' } })}
               />
               <SettingsRow icon="refresh" label={busy === 'restore' ? 'Checking the App Store' : 'Restore purchase'} onPress={busy ? undefined : () => void onRestore()} last />
@@ -224,6 +227,12 @@ export default function Settings() {
 
       <Section title="Preferences">
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
+          <SettingsRow
+            icon="paw"
+            label="Watch the welcome walk-in"
+            detail="The first-open pup, Apple and Google still hidden"
+            onPress={() => router.push({ pathname: '/(auth)/welcome', params: { preview: '1' } })}
+          />
           <SettingsRow icon="bell" label="Notifications" detail={`${enabledPushes} of ${Object.keys(prefs.notifications).length} on`} onPress={() => router.push('/(app)/settings/notifications')} />
           <SettingsRow icon="sun" label="Appearance" value={APPEARANCE_LABEL[prefs.appearance]} onPress={() => router.push('/(app)/settings/appearance')} />
           <SettingsRow

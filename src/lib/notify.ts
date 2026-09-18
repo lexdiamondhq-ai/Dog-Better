@@ -12,14 +12,55 @@ import { isOpen, kindMeta, prettyTime, type Reminder } from './reminders';
 
 const MAX_SCHEDULED = 60;
 const PREFIX = 'dogbetter:';
+const CHANNEL = 'reminders';
 
 let handlerSet = false;
+let lastOpenKey: string | null = null;
+
 function ensureHandler() {
   if (handlerSet) return;
   handlerSet = true;
   Notifications.setNotificationHandler({
     handleNotification: async () => ({ shouldShowBanner: true, shouldShowList: true, shouldPlaySound: true, shouldSetBadge: false }),
   });
+}
+
+async function ensureAndroidChannel() {
+  if (Platform.OS !== 'android') return;
+  await Notifications.setNotificationChannelAsync(CHANNEL, {
+    name: 'Reminders',
+    importance: Notifications.AndroidImportance.HIGH,
+    sound: 'default',
+    vibrationPattern: [0, 220, 180, 220],
+  });
+}
+
+/** After one fires, the next doses in the 60-slot window need to be scheduled. */
+export function watchReminderDelivered(onFire: () => void) {
+  if (Platform.OS === 'web') return () => {};
+  ensureHandler();
+  const sub = Notifications.addNotificationReceivedListener((n) => {
+    if (n.request.identifier.startsWith(PREFIX)) onFire();
+  });
+  return () => sub.remove();
+}
+
+export function watchReminderOpens(onOpen: (payload: { reminderId: string; dogId?: string }) => void) {
+  if (Platform.OS === 'web') return () => {};
+  ensureHandler();
+  const take = (res: Notifications.NotificationResponse | null) => {
+    if (!res) return;
+    const id = res.notification.request.identifier;
+    if (!id.startsWith(PREFIX)) return;
+    const key = `${id}:${res.notification.date}`;
+    if (lastOpenKey === key) return;
+    lastOpenKey = key;
+    const data = res.notification.request.content.data as { reminderId?: string; dogId?: string };
+    onOpen({ reminderId: typeof data.reminderId === 'string' ? data.reminderId : id.slice(PREFIX.length), dogId: data.dogId });
+  };
+  void Notifications.getLastNotificationResponseAsync().then(take);
+  const sub = Notifications.addNotificationResponseReceivedListener(take);
+  return () => sub.remove();
 }
 
 export async function notificationsAllowed(): Promise<boolean> {
@@ -48,11 +89,23 @@ function prefFor(kind: Reminder['kind']): keyof NotificationPrefs {
   return kind === 'medication' ? 'medication' : 'checkIn';
 }
 
+function intervalTrigger(at: Date): Notifications.NotificationTriggerInput {
+  const seconds = Math.max(1, Math.round((at.getTime() - Date.now()) / 1000));
+  if (Platform.OS === 'android') {
+    return { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds, repeats: false, channelId: CHANNEL };
+  }
+  return { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds, repeats: false };
+}
+
 function fireDate(r: Reminder): Date | null {
   const [y, m, d] = r.date.split('-').map(Number);
   const [hh, mm] = r.time.split(':').map(Number);
   if (![y, m, d, hh, mm].every(Number.isFinite)) return null;
-  return new Date(y, m - 1, d, hh, mm, 0, 0);
+  const at = new Date(y, m - 1, d, hh, mm, 0, 0);
+  const now = Date.now();
+  // "This minute" is already in the past once seconds tick. Nudge it forward so a just-saved dose still rings.
+  if (at.getTime() <= now && now - at.getTime() < 90_000) return new Date(now + 20_000);
+  return at;
 }
 
 /**
@@ -75,6 +128,7 @@ export async function syncReminderNotifications(all: Reminder[], prefs: Notifica
     await Promise.all(existing.filter((n) => n.identifier.startsWith(PREFIX)).map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier)));
     if (!due.length) return;
 
+    await ensureAndroidChannel();
     const allowed = await requestNotifications();
     if (!allowed) return;
 
@@ -90,7 +144,7 @@ export async function syncReminderNotifications(all: Reminder[], prefs: Notifica
             sound: true,
             data: { reminderId: r.id, dogId: r.dogId, kind: r.kind },
           },
-          trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: at },
+          trigger: intervalTrigger(at),
         });
       }),
     );

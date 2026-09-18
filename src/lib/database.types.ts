@@ -314,6 +314,8 @@ export type Database = {
       is_circle_member: { Args: { cid: string }; Returns: boolean };
       owns_circle: { Args: { cid: string }; Returns: boolean };
       join_circle: { Args: { code: string }; Returns: string };
+      consume_ai_use: { Args: { p_user: string; p_kind: string; p_cap: number }; Returns: number };
+      refund_ai_use: { Args: { p_user: string; p_kind: string }; Returns: undefined };
       create_circle: {
         Args: { p_name: string; p_kind?: 'nearby' | 'contacts' | 'custom' };
         Returns: { created_at: string; id: string; invite_code: string; kind: 'nearby' | 'contacts' | 'custom'; name: string; owner_id: string };

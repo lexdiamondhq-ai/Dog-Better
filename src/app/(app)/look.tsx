@@ -2,7 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -35,11 +35,7 @@ export default function LookScreen() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<LookResult | null>(null);
 
-  useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) {
-      void requestPermission();
-    }
-  }, [permission, requestPermission]);
+  // Camera stays off until they tap Allow. An unsolicited prompt fires before this copy can be read.
 
   /** The server owns the free quota. A quota answer still shows the checklist, then offers Premium. */
   const run = async (photoUri: string, at: LookFocus) => {
@@ -63,10 +59,8 @@ export default function LookScreen() {
     await apply(photo?.uri ?? null);
   };
 
-  const rerun = async (nextFocus: LookFocus) => {
+  const chooseFocus = (nextFocus: LookFocus) => {
     setFocus(nextFocus);
-    if (!uri) return;
-    await run(uri, nextFocus);
   };
 
   const sourceLabel = result ? (result.source === 'ai' ? 'AI looked at this photo' : 'Checklist') : busy ? 'Looking' : 'Photo helper';
@@ -161,7 +155,7 @@ export default function LookScreen() {
             </View>
             <View style={styles.chips}>
               {LOOK_FOCUSES.map((f) => (
-                <Chip key={f.id} label={f.label} selected={focus === f.id} onPress={() => void rerun(f.id)} />
+                <Chip key={f.id} label={f.label} selected={focus === f.id} onPress={() => chooseFocus(f.id)} />
               ))}
             </View>
             {result ? (
@@ -178,7 +172,7 @@ export default function LookScreen() {
                 </Text>
                 {result.source === 'local' && result.reason === 'quota' ? (
                   <Text variant="caption" tone="secondary">
-                    Three model Looks a day are free. Premium removes the cap.
+                    Three model Looks a day are free. Premium raises that to forty.
                   </Text>
                 ) : null}
                 {result.source === 'local' && result.reason === 'offline' ? (
@@ -193,6 +187,7 @@ export default function LookScreen() {
               </Text>
             )}
             <View style={styles.row}>
+              {uri ? <Button label="Look again" icon="sparkle" kind="secondary" onPress={() => void run(uri, focus)} loading={busy} /> : null}
               <Button label="Something off" icon="detective" kind="secondary" onPress={() => router.push('/(app)/symptoms')} style={{ flex: 1 }} />
               <Button label="Done" kind="ghost" onPress={() => router.back()} />
             </View>
@@ -223,5 +218,5 @@ const styles = StyleSheet.create({
   shutterInner: { width: 66, height: 66, borderRadius: 33 },
   sheet: { position: 'absolute', left: space.md, right: space.md, bottom: 0 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  row: { flexDirection: 'row', gap: space.sm, alignItems: 'center' },
+  row: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm, alignItems: 'center' },
 });

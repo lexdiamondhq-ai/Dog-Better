@@ -13,6 +13,7 @@ import { Text } from '@/components/ui/Text';
 import { relativeTime } from '@/lib/activity';
 import { REWARDS } from '@/engine/rewards';
 import { useAuth } from '@/lib/auth';
+import { humanizeError } from '@/lib/errors';
 import { usePoints } from '@/lib/points';
 import type { Place, PlacePulse } from '@/lib/database.types';
 import { CROWD, GROUND, KIND_META, type PlaceKind } from '@/lib/places';
@@ -35,6 +36,7 @@ export default function PlaceDetail() {
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(
     () =>
@@ -52,12 +54,19 @@ export default function PlaceDetail() {
   const send = async () => {
     if (!user || !place) return;
     setSaving(true);
-    await supabase.from('place_pulses').insert({ place_id: place.id, user_id: user.id, crowd, ground, shade, note: note.trim() || null });
-    await award({ kind: 'pulse', key: `pulse:${place.id}:${user.id}:${new Date().toISOString().slice(0, 10)}` });
-    setNote('');
-    setDone(true);
-    await load();
-    setSaving(false);
+    setSaveError(null);
+    try {
+      const { error } = await supabase.from('place_pulses').insert({ place_id: place.id, user_id: user.id, crowd, ground, shade, note: note.trim() || null });
+      if (error) throw error;
+      await award({ kind: 'pulse', key: `pulse:${place.id}:${user.id}:${new Date().toISOString().slice(0, 10)}` });
+      setNote('');
+      setDone(true);
+      await load();
+    } catch (e) {
+      setSaveError(humanizeError(e, 'Could not send that pulse.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const directions = () => {
@@ -127,6 +136,11 @@ export default function PlaceDetail() {
             </View>
             <Field placeholder="Anything others should know? (optional)" value={note} onChangeText={setNote} maxLength={140} />
             <Button label={done ? 'Pulse sent, thank you' : `Send pulse  +${REWARDS.pulse.points}`} icon={done ? 'check' : 'send'} onPress={send} loading={saving} kind={done ? 'secondary' : 'primary'} />
+            {saveError ? (
+              <Text variant="caption" tone="bad">
+                {saveError}
+              </Text>
+            ) : null}
           </Surface>
         </Animated.View>
       </Section>

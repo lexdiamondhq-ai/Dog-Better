@@ -22,6 +22,7 @@ import { track } from '@/lib/analytics';
 import { useAuth } from '@/lib/auth';
 import { REWARDS } from '@/engine/rewards';
 import { useDogs } from '@/lib/dogs';
+import { humanizeError } from '@/lib/errors';
 import { usePoints } from '@/lib/points';
 import { lookupBarcode, type Product } from '@/lib/openFoodFacts';
 import { amazonSearch } from '@/lib/shop';
@@ -59,6 +60,8 @@ export default function Scan() {
   const [typedName, setTypedName] = useState('');
   const [barcodeDigits, setBarcodeDigits] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [cameraKey, setCameraKey] = useState(0);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [pieces, setPieces] = useState(1);
@@ -115,6 +118,7 @@ export default function Scan() {
         }),
       );
       setSaved(false);
+      setSaveError(null);
       void track('scan_complete', { found: true });
     } catch {
       setLookupError(code);
@@ -167,6 +171,7 @@ export default function Scan() {
     setGramsEach('5');
     setReport(analyzeIngredients({ ingredientsText: typed, weightKg: dog?.weight_kg, allergies: dog?.allergies ?? [] }));
     setSaved(false);
+    setSaveError(null);
   };
 
   const clear = () => {
@@ -175,6 +180,7 @@ export default function Scan() {
     setReport(null);
     setNotFound(null);
     setSaved(false);
+    setSaveError(null);
     setBarcodeDigits('');
     setPieces(1);
     setGramsEach('5');
@@ -195,27 +201,37 @@ export default function Scan() {
 
   const save = async () => {
     if (!user || !dog || !product || !report) return;
-    await supabase.from('food_scans').insert({
-      dog_id: dog.id,
-      owner_id: user.id,
-      barcode: product.barcode || null,
-      product_name: product.name,
-      brand: product.brand,
-      verdict: report.verdict,
-      flagged: report.flags.map((f) => ({ id: f.id, label: f.label, level: f.level })),
-    });
-    if (report.verdict !== 'danger') {
-      await supabase.from('meals').insert({
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const { error: scanError } = await supabase.from('food_scans').insert({
         dog_id: dog.id,
         owner_id: user.id,
-        kind: 'treat',
-        label: `${pieces} ${pieces === 1 ? 'piece' : 'pieces'} · ${product.name ?? 'treat'}`,
-        calories: thisKcal,
+        barcode: product.barcode || null,
+        product_name: product.name,
+        brand: product.brand,
+        verdict: report.verdict,
+        flagged: report.flags.map((f) => ({ id: f.id, label: f.label, level: f.level })),
       });
+      if (scanError) throw scanError;
+      if (report.verdict !== 'danger') {
+        const { error: mealError } = await supabase.from('meals').insert({
+          dog_id: dog.id,
+          owner_id: user.id,
+          kind: 'treat',
+          label: `${pieces} ${pieces === 1 ? 'piece' : 'pieces'} · ${product.name ?? 'treat'}`,
+          calories: thisKcal,
+        });
+        if (mealError) throw mealError;
+      }
+      await award({ kind: 'scan', key: `scan:${dog.id}:${product.barcode || product.name}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
+      await activity.reload();
+      setSaved(true);
+    } catch (e) {
+      setSaveError(humanizeError(e, 'Could not save that scan.'));
+    } finally {
+      setSaving(false);
     }
-    await award({ kind: 'scan', key: `scan:${dog.id}:${product.barcode || product.name}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
-    await activity.reload();
-    setSaved(true);
   };
 
   return (
@@ -502,11 +518,17 @@ export default function Scan() {
                   icon={saved ? 'check' : 'plus'}
                   kind={saved ? 'secondary' : 'primary'}
                   disabled={saved}
+                  loading={saving}
                   onPress={save}
                   style={{ flex: 1 }}
                 />
                 <Button label="Scan another" kind="secondary" icon="scan" onPress={goScan} />
               </View>
+              {saveError ? (
+                <Text variant="caption" tone="bad">
+                  {saveError}
+                </Text>
+              ) : null}
             </ScrollView>
           </Surface>
         </Animated.View>

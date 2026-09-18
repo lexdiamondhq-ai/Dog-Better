@@ -17,11 +17,15 @@ export default function Inbox() {
   const router = useRouter();
   const inbox = useInbox();
   const markSeen = inbox.markCommentsSeen;
+  const refresh = inbox.refresh;
 
   useFocusEffect(
     useCallback(() => {
-      void markSeen();
-    }, [markSeen]),
+      void refresh();
+      return () => {
+        void markSeen();
+      };
+    }, [markSeen, refresh]),
   );
 
   return (
@@ -35,7 +39,7 @@ export default function Inbox() {
             Nothing new
           </Text>
           <Text variant="body" tone="secondary" align="center">
-            When someone comments on or likes a photo you posted, it shows up here.
+            Hearts and comments on photos you posted show up here, including ones you leave yourself.
           </Text>
         </Surface>
       ) : (

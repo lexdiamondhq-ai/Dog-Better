@@ -121,7 +121,8 @@ export default function Onboarding() {
       setActiveDog(data.id);
       await refresh();
       await award({ kind: 'dog', key: `dog:${data.id}`, dogId: data.id });
-      router.replace(adding ? '/(app)/(tabs)/profile' : '/(app)/(tabs)/today');
+      // First dog: land on the trial offer. Gate also sends here. Do not replace to Today or Skip is never seen.
+      router.replace(adding ? '/(app)/(tabs)/profile' : { pathname: '/paywall', params: { from: 'onboarding' } });
     } catch (e) {
       setError(humanizeError(e, 'Could not save your dog.'));
     } finally {
@@ -206,7 +207,7 @@ export default function Onboarding() {
               </View>
               <View style={[styles.unitToggle, { backgroundColor: t.surface }]}>
                 {(['kg', 'lb'] as const).map((u) => (
-                  <Tap key={u} onPress={() => setUnit(u)} haptic="selection" style={[styles.unit, unitResolved === u && { backgroundColor: t.brand }]}>
+                  <Tap key={u} onPress={() => setUnit(u)} haptic="selection" accessibilityLabel={`Weight in ${u}`} accessibilityState={{ selected: unitResolved === u }} style={[styles.unit, unitResolved === u && { backgroundColor: t.brand }]}>
                     <Text variant="label" tone={unitResolved === u ? 'onBrand' : 'secondary'}>
                       {u}
                     </Text>
@@ -253,6 +254,7 @@ export default function Onboarding() {
             <Text variant="display">A face for the vault</Text>
             <Animated.View entering={FadeInDown.delay(150)} style={{ alignItems: 'center', gap: space.md }}>
               <Tap
+                accessibilityLabel={photo ? 'Change photo' : 'Add a photo'}
                 onPress={async () => {
                   try {
                     const uri = await pickFromLibrary();

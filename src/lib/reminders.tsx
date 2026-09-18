@@ -4,8 +4,9 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { palette } from '@/theme/tokens';
 import type { IconName } from '@/components/ui/Icon';
 
+import { useAuth } from './auth';
 import { useDogs } from './dogs';
-import { syncReminderNotifications } from './notify';
+import { syncReminderNotifications, watchReminderDelivered } from './notify';
 import { usePreferences } from './preferences';
 
 export type ReminderKind = 'treat' | 'medication' | 'meal' | 'walk' | 'groom' | 'vet' | 'vaccine' | 'training' | 'boarding' | 'birthday' | 'other';
@@ -23,7 +24,28 @@ export type Reminder = {
   completedAt?: string;
 };
 
-const KEY = 'dogbetter.reminders.v1';
+const LEGACY_KEY = 'dogbetter.reminders.v1';
+const keyFor = (userId: string) => `dogbetter.reminders.v2.${userId}`;
+
+function parseRows(raw: string | null): Reminder[] {
+  if (!raw) return [];
+  try {
+    const rows = JSON.parse(raw) as Reminder[];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function readRemindersForExport(userId: string, dogIds: string[]) {
+  const rows = parseRows(await AsyncStorage.getItem(keyFor(userId)));
+  const allow = new Set(dogIds);
+  return allow.size ? rows.filter((r) => allow.has(r.dogId)) : rows;
+}
+
+export async function wipeRemindersForUser(userId: string) {
+  await AsyncStorage.removeItem(keyFor(userId));
+}
 
 export const REMINDER_KINDS: { id: ReminderKind; label: string; color: string; icon: IconName }[] = [
   { id: 'treat', label: 'Treat', color: palette.amber, icon: 'paw' },
@@ -53,6 +75,26 @@ export function ymd(d: Date) {
 
 export function clockNow(d = new Date()) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Next 5-minute clock time at least two minutes out, so a just-saved event can still notify. */
+export function nextClockSlot(from = new Date()) {
+  const d = new Date(from.getTime() + 2 * 60_000);
+  d.setSeconds(0, 0);
+  const extra = (5 - (d.getMinutes() % 5)) % 5;
+  d.setMinutes(d.getMinutes() + extra);
+  return clockNow(d);
+}
+
+/** 2026-09-18 -> Today / Tomorrow / Fri, Sep 18 */
+export function prettyDate(date: string, today: string) {
+  if (date === today) return 'Today';
+  const d = new Date(`${date}T12:00:00`);
+  if (Number.isNaN(d.getTime())) return date;
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date === ymd(tomorrow)) return 'Tomorrow';
+  return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
 /** 20:00 -> 8p */
@@ -91,36 +133,87 @@ type Store = {
 const Ctx = createContext<Store | null>(null);
 
 export function RemindersProvider({ children }: PropsWithChildren) {
+  const { user } = useAuth();
+  const userId = user?.id ?? null;
   const [all, setAll] = useState<Reminder[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const { notifications, loaded: prefsLoaded } = usePreferences();
-  const { dogs } = useDogs();
+  const { dogs, loaded: dogsLoaded } = useDogs();
+  const dogKey = dogs.map((d) => d.id).sort().join(',');
 
   useEffect(() => {
-    AsyncStorage.getItem(KEY)
-      .then((raw) => {
-        if (raw) setAll(JSON.parse(raw) as Reminder[]);
+    let cancelled = false;
+    if (!userId) {
+      void Promise.resolve().then(() => {
+        if (!cancelled) {
+          setAll([]);
+          setHydrated(true);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (!dogsLoaded) return;
+    (async () => {
+      const scoped = parseRows(await AsyncStorage.getItem(keyFor(userId)));
+      if (scoped.length) {
+        if (!cancelled) setAll(scoped);
+        return;
+      }
+      const legacy = parseRows(await AsyncStorage.getItem(LEGACY_KEY));
+      if (!legacy.length) {
+        if (!cancelled) setAll([]);
+        return;
+      }
+      const mineIds = new Set(dogKey ? dogKey.split(',') : []);
+      const mine = legacy.filter((r) => mineIds.has(r.dogId));
+      const rest = legacy.filter((r) => !mineIds.has(r.dogId));
+      if (mine.length) await AsyncStorage.setItem(keyFor(userId), JSON.stringify(mine));
+      if (rest.length) await AsyncStorage.setItem(LEGACY_KEY, JSON.stringify(rest));
+      else await AsyncStorage.removeItem(LEGACY_KEY);
+      if (!cancelled) setAll(mine);
+    })()
+      .catch(() => {
+        if (!cancelled) setAll([]);
       })
-      .catch(() => {})
-      .finally(() => setHydrated(true));
-  }, []);
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, dogsLoaded, dogKey]);
 
   const persist = useCallback((updater: (prev: Reminder[]) => Reminder[]) => {
+    if (!userId) return;
     setAll((prev) => {
       const next = updater(prev);
-      AsyncStorage.setItem(KEY, JSON.stringify(next)).catch(() => {});
+      AsyncStorage.setItem(keyFor(userId), JSON.stringify(next)).catch(() => {});
       return next;
     });
-  }, []);
+  }, [userId]);
 
   // The calendar is the source of truth; the phone's notification queue mirrors it. Debounced so a
-  // sheet read that adds eighty doses schedules once.
+  // sheet read that adds eighty doses schedules once. Sign-out clears the queue so the next account
+  // does not inherit the last household's alarms.
   useEffect(() => {
-    if (!hydrated || !prefsLoaded) return;
+    if (!prefsLoaded) return;
+    if (!userId) {
+      const id = setTimeout(() => void syncReminderNotifications([], notifications, new Map()), 200);
+      return () => clearTimeout(id);
+    }
+    if (!hydrated) return;
     const names = new Map(dogs.map((d) => [d.id, d.name]));
     const id = setTimeout(() => void syncReminderNotifications(all, notifications, names), 800);
-    return () => clearTimeout(id);
-  }, [all, notifications, dogs, hydrated, prefsLoaded]);
+    const stop = watchReminderDelivered(() => {
+      void syncReminderNotifications(all, notifications, names);
+    });
+    return () => {
+      clearTimeout(id);
+      stop();
+    };
+  }, [all, notifications, dogs, hydrated, prefsLoaded, userId]);
 
   const value = useMemo(() => ({ all, persist }), [all, persist]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

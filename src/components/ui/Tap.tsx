@@ -20,13 +20,14 @@ type Props = PropsWithChildren<
  * The one pressable everything is built on: a soft spring squash plus a tiny haptic.
  * It makes the whole app feel physical without any screen thinking about it.
  */
-export function Tap({ children, style, scaleTo = 0.965, haptic = 'light', onPressIn, onPressOut, onPress, disabled, ...rest }: Props) {
+export function Tap({ children, style, scaleTo = 0.965, haptic = 'light', onPressIn, onPressOut, onPress, disabled, accessibilityRole, ...rest }: Props) {
   const scale = useSharedValue(1);
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
     <AnimatedPressable
       {...rest}
+      accessibilityRole={accessibilityRole ?? 'button'}
       disabled={disabled}
       onPressIn={(e) => {
         scale.set(withSpring(scaleTo, springs.snappy));

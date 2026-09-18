@@ -27,7 +27,7 @@ export default function Score() {
       <Surface kind="fur" style={styles.hero}>
         <Text variant="display">{score.total}</Text>
         <Text variant="body" tone="secondary">
-          Out of 100. A nudge, not a grade. {score.available ? `${score.available} points still sitting in today’s actions.` : `${dog?.name ?? 'Your dog'} is set.`}
+          Out of {score.max}. What you logged today. {score.available ? `${score.available} still sitting in today’s actions.` : `${dog?.name ?? 'Your dog'} is set.`}
         </Text>
       </Surface>
 

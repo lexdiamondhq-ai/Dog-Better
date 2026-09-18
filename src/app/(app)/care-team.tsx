@@ -12,7 +12,10 @@ import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { SheetReadReview } from '@/components/care/SheetReadReview';
 import { applySheetRead } from '@/lib/applySheetRead';
+import type { SheetRead } from '@/engine/sheetMeds';
+import { requestNotifications } from '@/lib/notify';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
 import { useEntitlements } from '@/lib/entitlements';
@@ -51,6 +54,8 @@ export default function CareTeam() {
   const [busy, setBusy] = useState(false);
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SheetRead | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const sheet = dog ? buildHandoffSheet(dog, user?.email, weightUnit) : '';
@@ -95,10 +100,8 @@ export default function CareTeam() {
           setReadNote('Saved. No medications or meal times were on that page. Photograph the meds list if this was a PDF.');
           return;
         }
-        const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
-        await refresh();
-        setReadNote(summary);
-        Alert.alert('On the profile', summary);
+        setDraft(read);
+        setReadNote('Check the times and days before anything is written to the profile or the calendar.');
       } catch (e) {
         setError(humanizeError(e, 'Could not save that visit.'));
       } finally {
@@ -115,9 +118,40 @@ export default function CareTeam() {
 
   const uploadFile = () => runUpload('file');
 
+  const confirmRead = () => {
+    if (!dog || !draft) return;
+    void (async () => {
+      setConfirming(true);
+      setError(null);
+      try {
+        await requestNotifications();
+        const summary = await applySheetRead({ dog, read: draft, replaceSheetReminders: reminders.replaceSheetReminders });
+        await refresh();
+        setDraft(null);
+        setReadNote(summary);
+        Alert.alert('On the profile', summary);
+      } catch (e) {
+        setError(humanizeError(e, 'Could not save those medications.'));
+      } finally {
+        setConfirming(false);
+      }
+    })();
+  };
+
   return (
     <Screen>
-      <ScreenHeader title={dog ? `${dog.name}'s people` : 'Care team'} subtitle={dog ? 'Whoever has them should never have to guess.' : undefined} onBack={() => router.back()} />
+      <ScreenHeader
+        title={dog ? `${dog.name}'s people` : 'Care team'}
+        subtitle={dog ? 'Whoever has them should never have to guess.' : undefined}
+        onBack={() => router.back()}
+        trailing={
+          dog ? (
+            <Tap onPress={() => router.push('/(app)/care-sheet-edit')} haptic="selection" style={[styles.editBtn, { backgroundColor: t.surface }]} accessibilityLabel="Edit care sheet">
+              <Icon name="edit" size={18} />
+            </Tap>
+          ) : undefined
+        }
+      />
 
       <Animated.View entering={FadeInUp.delay(60).duration(260)}>
         <Surface kind="grouped" style={{ gap: space.md }}>
@@ -138,8 +172,8 @@ export default function CareTeam() {
             </Text>
           </View>
           <View style={styles.actions}>
-            <Button label="Send sheet" icon="share" onPress={share} style={{ flex: 1 }} />
-            <Button label={copied ? 'Copied' : 'Copy'} icon={copied ? 'check' : 'document'} kind="secondary" onPress={copy} />
+            <Button label="Send sheet" icon="share" onPress={share} disabled={!dog} style={{ flex: 1 }} />
+            <Button label={copied ? 'Copied' : 'Copy'} icon={copied ? 'check' : 'document'} kind="secondary" onPress={copy} disabled={!dog} style={{ flex: 1 }} />
           </View>
           <Button label="Clinic pack for the vet" icon="vet" kind="ghost" onPress={() => router.push('/(app)/clinic')} />
         </Surface>
@@ -150,7 +184,7 @@ export default function CareTeam() {
           <Text variant="caption" tone="secondary">
             Upload a photo or a text file (visit summary, vaccine card). It lands on {dog?.name ?? 'this dog'}&apos;s profile.
             {isPremium
-              ? ' Premium reads the page for medications, writes them on the profile, and sets dose and meal reminders.'
+              ? ' Premium reads the page for medications. You check the times, then we write them on the profile and set reminders.'
               : ' Reading the sheet for meds is Premium.'}
           </Text>
           <Field label="What was this visit" placeholder="Annual, vaccines, teeth" value={title} onChangeText={setTitle} />
@@ -164,6 +198,9 @@ export default function CareTeam() {
             </Text>
           ) : null}
           {!isPremium ? <Button label="Unlock sheet reading with Premium" icon="sparkle" kind="ghost" onPress={() => router.push({ pathname: '/paywall', params: { from: 'sheet-meds' } })} /> : null}
+          {draft ? (
+            <SheetReadReview read={draft} onChange={setDraft} onConfirm={confirmRead} onDiscard={() => setDraft(null)} confirming={confirming} />
+          ) : null}
           {readNote ? (
             <Text variant="caption" tone="secondary">
               {readNote}
@@ -207,11 +244,6 @@ export default function CareTeam() {
         </Surface>
       </Section>
 
-      <Tap onPress={() => router.push('/(app)/dog/edit')} haptic="selection">
-        <Text variant="label" tone="brand" align="center">
-          Something missing? Edit the profile
-        </Text>
-      </Tap>
 
       <Section title="Who sees what">
         <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
@@ -238,6 +270,7 @@ export default function CareTeam() {
 }
 
 const styles = StyleSheet.create({
+  editBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   sheetIcon: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   preview: { padding: space.md, borderRadius: radius.sm },

@@ -60,6 +60,7 @@ export default function PostDetail() {
     if (!post || !user) return;
     setPost({ ...post, liked: !post.liked, likes: post.likes + (post.liked ? -1 : 1) });
     await toggleLike(post.id, user.id, post.liked);
+    void inbox.refresh();
   };
 
   const send = async () => {
@@ -69,6 +70,7 @@ export default function PostDetail() {
     await award({ kind: 'comment', key: `comment:${id}:${user.id}:${Date.now()}` });
     setBody('');
     await load();
+    void inbox.refresh();
     setSending(false);
     // The new comment renders under the composer otherwise.
     requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));

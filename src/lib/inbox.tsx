@@ -18,9 +18,10 @@ type Api = {
   unreadComments: number;
   items: InboxItem[];
   markCommentsSeen: () => Promise<void>;
+  refresh: () => Promise<void>;
 };
 
-const Ctx = createContext<Api>({ unread: 0, unreadComments: 0, items: [], markCommentsSeen: async () => {} });
+const Ctx = createContext<Api>({ unread: 0, unreadComments: 0, items: [], markCommentsSeen: async () => {}, refresh: async () => {} });
 
 function seenKey(userId: string) {
   return `dogbetter.inbox.activity.${userId}`;
@@ -46,11 +47,9 @@ export function InboxProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const [{ count: commentCount }, { count: likeCount }, { data: comments }, { data: likes }] = await Promise.all([
-      supabase.from('post_comments').select('id', { count: 'exact', head: true }).in('post_id', ids).neq('author_id', user.id).gt('created_at', seen),
-      supabase.from('post_likes').select('post_id', { count: 'exact', head: true }).in('post_id', ids).neq('user_id', user.id).gt('created_at', seen),
-      supabase.from('post_comments').select('id, post_id, body, created_at').in('post_id', ids).neq('author_id', user.id).order('created_at', { ascending: false }).limit(20),
-      supabase.from('post_likes').select('post_id, user_id, created_at').in('post_id', ids).neq('user_id', user.id).order('created_at', { ascending: false }).limit(20),
+    const [{ data: comments }, { data: likes }] = await Promise.all([
+      supabase.from('post_comments').select('id, post_id, author_id, body, created_at').in('post_id', ids).order('created_at', { ascending: false }).limit(20),
+      supabase.from('post_likes').select('post_id, user_id, created_at').in('post_id', ids).order('created_at', { ascending: false }).limit(20),
     ]);
 
     const next: InboxItem[] = [
@@ -58,22 +57,23 @@ export function InboxProvider({ children }: PropsWithChildren) {
         id: `c:${c.id}`,
         kind: 'comment' as const,
         postId: c.post_id,
-        preview: c.body.trim() || 'Left a comment on your photo',
+        preview: c.author_id === user.id ? 'You commented on your photo' : c.body.trim() || 'Left a comment on your photo',
         at: c.created_at,
       })),
       ...(likes ?? []).map((l) => ({
         id: `l:${l.post_id}:${l.user_id}:${l.created_at}`,
         kind: 'like' as const,
         postId: l.post_id,
-        preview: 'Liked your photo',
+        preview: l.user_id === user.id ? 'You liked your photo' : 'Liked your photo',
         at: l.created_at,
       })),
     ]
       .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
       .slice(0, 30);
 
+    const seenAt = new Date(seen).getTime();
     setItems(next);
-    setUnread((commentCount ?? 0) + (likeCount ?? 0));
+    setUnread(next.filter((item) => new Date(item.at).getTime() > seenAt).length);
   }, [user]);
 
   useEffect(() => {
@@ -82,17 +82,28 @@ export function InboxProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     if (!user) return;
-    const channel = supabase
-      .channel('inbox-activity')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_comments' }, () => {
-        void refresh();
-      })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, () => {
-        void refresh();
-      })
-      .subscribe();
+    let cancelled = false;
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    void supabase
+      .from('posts')
+      .select('id')
+      .eq('author_id', user.id)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const mine = new Set((data ?? []).map((p) => p.id));
+        const onRow = (payload: { new: { post_id?: string } }) => {
+          const postId = payload.new?.post_id;
+          if (postId && mine.has(postId)) void refresh();
+        };
+        channel = supabase
+          .channel(`inbox-activity:${user.id}`)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_comments' }, onRow)
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_likes' }, onRow)
+          .subscribe();
+      });
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
     };
   }, [refresh, user]);
 
@@ -102,7 +113,7 @@ export function InboxProvider({ children }: PropsWithChildren) {
     setUnread(0);
   }, [user]);
 
-  const value = useMemo(() => ({ unread, unreadComments: unread, items, markCommentsSeen }), [unread, items, markCommentsSeen]);
+  const value = useMemo(() => ({ unread, unreadComments: unread, items, markCommentsSeen, refresh }), [unread, items, markCommentsSeen, refresh]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

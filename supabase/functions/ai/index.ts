@@ -4,7 +4,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 /**
  * The only place Dog Better talks to a model. The OpenAI key lives here as a secret, never in the
  * app bundle. Free users get FREE_LOOKS_PER_DAY Look calls; Premium (profiles.premium_until, written by
- * the RevenueCat webhook) is unlimited. Visit-sheet reads are Premium only.
+ * the RevenueCat webhook) gets PREMIUM_LOOKS_PER_DAY. Visit-sheet reads are Premium only.
  *
  * Responses always carry `source` so the UI can say honestly whether a model looked at the photo.
  */
@@ -15,6 +15,7 @@ const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY');
 const MODEL = Deno.env.get('OPENAI_MODEL') ?? 'gpt-4o-mini';
 const FREE_LOOKS_PER_DAY = 3;
+const PREMIUM_LOOKS_PER_DAY = 40;
 const MAX_IMAGE_B64 = 6_000_000; // ~4.5 MB decoded
 
 type LookBody = { kind: 'look'; prompt: string; dogLine: string; allergies: string[]; imageBase64: string };
@@ -28,7 +29,7 @@ const LOOK_SYSTEM =
   'You help a dog owner look at a photo. You are not a veterinarian. Return JSON only: {"title","summary","checks":[string],"next","caution"}. Be specific about what you see. Never invent a diagnosis. Urge a vet for pain, breathing, eye injuries, tight belly, or toxins.';
 
 const SHEET_SYSTEM =
-  'Extract medications and feeding times from a veterinary discharge. You are not a veterinarian. Never invent a drug, dose, or time. If it is not written, omit it. JSON only: {"medications":[{"name","dose","times":["HH:MM"],"withFood":true,"days":7,"note":null}],"meals":[{"time":"HH:MM","label":"Breakfast"}]}';
+  'Extract medications and feeding times from a veterinary discharge. You are not a veterinarian. Never invent a drug, dose, time, or duration. If a field is not written, omit it or use null. Do not default times to 08:00 or days to 7. If the sheet lists tablet strength and a separate give amount, put the give amount in dose and the strength in note. JSON only: {"medications":[{"name","dose":null,"times":[],"withFood":false,"days":null,"note":null}],"meals":[{"time":"HH:MM","label":"Breakfast","days":null}]}';
 
 async function askModel(system: string, content: unknown[], temperature: number) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -79,12 +80,12 @@ Deno.serve(async (req) => {
 
   if (body.kind === 'sheet' && !premium) return json({ ok: false, source: 'local', reason: 'premium_required' }, 402);
 
-  if (body.kind === 'look' && !premium) {
-    const day = new Date().toISOString().slice(0, 10);
-    const { data: row } = await admin.from('ai_daily_uses').select('count').eq('user_id', uid).eq('day', day).eq('kind', 'look').maybeSingle();
-    const used = (row?.count as number | undefined) ?? 0;
-    if (used >= FREE_LOOKS_PER_DAY) return json({ ok: false, source: 'local', reason: 'quota', remaining: 0 }, 429);
-    await admin.from('ai_daily_uses').upsert({ user_id: uid, day, kind: 'look', count: used + 1 }, { onConflict: 'user_id,day,kind' });
+  let chargedLook = false;
+  if (body.kind === 'look') {
+    const cap = premium ? PREMIUM_LOOKS_PER_DAY : FREE_LOOKS_PER_DAY;
+    const { data: used } = await admin.rpc('consume_ai_use', { p_user: uid, p_kind: 'look', p_cap: cap });
+    if (used === -1 || used == null) return json({ ok: false, source: 'local', reason: 'quota', remaining: 0 }, 429);
+    chargedLook = true;
   }
 
   try {
@@ -110,6 +111,9 @@ Deno.serve(async (req) => {
     const result = await askModel(SHEET_SYSTEM, content, 0);
     return json({ ok: true, source: 'ai', result });
   } catch (e) {
+    if (chargedLook) {
+      await admin.rpc('refund_ai_use', { p_user: uid, p_kind: 'look' });
+    }
     console.error('ai failed', body.kind, e);
     return json({ ok: false, source: 'local', reason: 'model_error' }, 502);
   }

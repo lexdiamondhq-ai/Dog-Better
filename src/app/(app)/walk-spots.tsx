@@ -299,6 +299,7 @@ export default function WalkSpots() {
                 </View>
               </View>
               <Button label="Start a walk" icon="walk" loading={starting} onPress={() => void startHere(picked)} />
+              <Button label="How this area feels" icon="places" kind="ghost" onPress={() => router.push('/(app)/places')} />
             </>
           ) : (
             <Text variant="body" tone="secondary">

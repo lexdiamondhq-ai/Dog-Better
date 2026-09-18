@@ -24,6 +24,7 @@ type Api = {
   today: number;
   todayCount: number;
   pocket: number;
+  todayCounts: Partial<Record<RewardKind, number>>;
   lastAward: PointEntry | null;
   lastLevelUp: BetterLevel | null;
   award: (input: AwardInput) => Promise<PointEntry | null>;
@@ -38,6 +39,7 @@ const Ctx = createContext<Api>({
   today: 0,
   todayCount: 0,
   pocket: 0,
+  todayCounts: {},
   lastAward: null,
   lastLevelUp: null,
   award: async () => null,
@@ -162,11 +164,20 @@ export function PointsProvider({ children }: PropsWithChildren) {
     [clockDay, entries],
   );
   const pocket = Math.min(JAR_POCKET, todayCount);
+  const todayCounts = useMemo(() => {
+    const counts: Partial<Record<RewardKind, number>> = {};
+    if (!clockDay) return counts;
+    for (const e of entries) {
+      if (entryDay(e.at) !== clockDay) continue;
+      counts[e.kind] = (counts[e.kind] ?? 0) + 1;
+    }
+    return counts;
+  }, [clockDay, entries]);
   const total = useMemo(() => entries.reduce((sum, e) => sum + e.points, 0), [entries]);
 
   const value = useMemo<Api>(
-    () => ({ loaded, entries, total, today, todayCount, pocket, lastAward, lastLevelUp, award, clearToast, clearLevelUp }),
-    [loaded, entries, total, today, todayCount, pocket, lastAward, lastLevelUp, award, clearToast, clearLevelUp],
+    () => ({ loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, clearToast, clearLevelUp }),
+    [loaded, entries, total, today, todayCount, pocket, todayCounts, lastAward, lastLevelUp, award, clearToast, clearLevelUp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -21,12 +21,12 @@ export type Activity = {
   health: HealthLog[];
   scans: FoodScan[];
   weights: WeightEntry[];
-  momentsThisWeek: number;
-  /** Wall clock at fetch time, so derived "today"/"this week" math stays pure per snapshot. */
+  momentsToday: number;
+  /** Wall clock at fetch time, so derived "today" math stays pure per snapshot. */
   fetchedAt: number;
 };
 
-const EMPTY: Activity = { meals: [], health: [], scans: [], weights: [], momentsThisWeek: 0, fetchedAt: 0 };
+const EMPTY: Activity = { meals: [], health: [], scans: [], weights: [], momentsToday: 0, fetchedAt: 0 };
 
 export function useDogActivity(dog: Dog | null) {
   const { weightUnit } = usePreferences();
@@ -42,20 +42,21 @@ export function useDogActivity(dog: Dog | null) {
     }
     const now = Date.now();
     const since = new Date(now - 14 * 86400000).toISOString();
-    const weekAgo = new Date(now - 7 * 86400000).toISOString();
+    const dayStart = new Date(now);
+    dayStart.setHours(0, 0, 0, 0);
     const [meals, health, scans, weights, photos] = await Promise.all([
       supabase.from('meals').select('*').eq('dog_id', dog.id).gte('logged_at', since).order('logged_at', { ascending: false }),
       supabase.from('health_logs').select('*').eq('dog_id', dog.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('food_scans').select('*').eq('dog_id', dog.id).order('created_at', { ascending: false }).limit(20),
       supabase.from('weight_entries').select('*').eq('dog_id', dog.id).order('recorded_at', { ascending: false }).limit(12),
-      supabase.from('dog_photos').select('id', { count: 'exact', head: true }).eq('dog_id', dog.id).gte('created_at', weekAgo),
+      supabase.from('dog_photos').select('id', { count: 'exact', head: true }).eq('dog_id', dog.id).gte('created_at', dayStart.toISOString()),
     ]);
     setActivity({
       meals: meals.data ?? [],
       health: health.data ?? [],
       scans: scans.data ?? [],
       weights: weights.data ?? [],
-      momentsThisWeek: photos.count ?? 0,
+      momentsToday: photos.count ?? 0,
       fetchedAt: now,
     });
     setLoading(false);
@@ -82,25 +83,32 @@ export function useDogActivity(dog: Dog | null) {
   }, [load]);
 
   const derived = useMemo(() => {
-    const now = activity.fetchedAt;
-    const startOfDay = new Date(now);
+    const startOfDay = new Date(activity.fetchedAt || Date.now());
     startOfDay.setHours(0, 0, 0, 0);
-    const weekAgo = now - 7 * 86400000;
     const mealsToday = activity.meals.filter((m) => new Date(m.logged_at) >= startOfDay);
+    const mealsLogged = mealsToday.filter((m) => m.kind === 'breakfast' || m.kind === 'dinner').length;
+    const treatsToday = mealsToday.some((m) => m.kind === 'treat');
     const treatKcalToday = mealsToday.filter((m) => m.kind === 'treat').reduce((n, m) => n + (m.calories ?? 0), 0);
-    const recentHealth = activity.health.filter((h) => new Date(h.created_at).getTime() >= weekAgo);
-    const worst = recentHealth.some((h) => h.triage === 'red') ? 'red' : recentHealth.some((h) => h.triage === 'amber') ? 'amber' : recentHealth.length ? 'green' : 'none';
+    const healthToday = activity.health.filter((h) => new Date(h.created_at) >= startOfDay);
+    const triageToday = healthToday.some((h) => h.triage === 'red')
+      ? 'red'
+      : healthToday.some((h) => h.triage === 'amber')
+        ? 'amber'
+        : healthToday.length
+          ? 'green'
+          : 'none';
     const lastWeight = activity.weights[0];
-    const lastWeightDaysAgo = lastWeight ? Math.floor((now - new Date(lastWeight.recorded_at).getTime()) / 86400000) : null;
-    const checks = [...activity.scans, ...recentHealth].filter((x) => new Date(x.created_at).getTime() >= weekAgo).length + (lastWeightDaysAgo != null && lastWeightDaysAgo <= 7 ? 1 : 0);
+    const weightToday = activity.weights.some((w) => new Date(w.recorded_at) >= startOfDay);
+    const scansToday = activity.scans.filter((s) => new Date(s.created_at) >= startOfDay).length;
+    const checksToday = scansToday + healthToday.length + (weightToday ? 1 : 0);
 
     const score = computeBetterScore({
-      dog,
-      mealsToday: mealsToday.length,
-      worstTriage7d: worst,
-      lastWeightDaysAgo,
-      momentsThisWeek: activity.momentsThisWeek,
-      checksThisWeek: checks,
+      mealsToday: mealsLogged,
+      treatsToday,
+      triageToday,
+      weightToday,
+      momentsToday: activity.momentsToday,
+      checksToday,
     });
 
     const timeline: TimelineItem[] = [
@@ -113,7 +121,7 @@ export function useDogActivity(dog: Dog | null) {
       .slice(0, 8);
 
     return { mealsToday, treatKcalToday, score, timeline, lastWeight };
-  }, [activity, dog, weightUnit]);
+  }, [activity, weightUnit]);
 
   return { ...activity, ...derived, loading, refreshing, refresh, reload: load };
 }

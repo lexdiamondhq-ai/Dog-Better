@@ -43,7 +43,9 @@ export type SymptomId =
   | 'trembling'
   | 'pale_gums'
   | 'ate_toxic'
-  | 'pain';
+  | 'pain'
+  | 'retching'
+  | 'heat_stroke';
 
 export type Symptom = {
   id: SymptomId;
@@ -62,6 +64,8 @@ export const SYMPTOMS: Symptom[] = [
   { id: 'diarrhea', label: 'Diarrhea', group: 'Tummy', homeTip: 'Bland diet for 2-3 days, plenty of water, a spoon of plain pumpkin can help firm things up.', watchFor: 'Black or bloody stool, or diarrhea plus vomiting.' },
   { id: 'blood_stool', label: 'Blood in stool', group: 'Tummy', homeTip: 'Note colour: bright red usually means the lower gut, black and tarry means higher up.', watchFor: 'Any black tarry stool or large volumes of blood need same-day care.' },
   { id: 'bloated', label: 'Swollen, tight belly', group: 'Urgent signs', homeTip: '', watchFor: 'Bloat (GDV) can be fatal within hours. Retching without producing anything is a classic sign.', redFlag: true },
+  { id: 'retching', label: 'Retching, nothing coming up', group: 'Urgent signs', homeTip: '', watchFor: 'Unproductive retching with a tight belly is the classic early sign of GDV. Do not wait for vomit.', redFlag: true },
+  { id: 'heat_stroke', label: 'Overheating or heat stroke', group: 'Urgent signs', homeTip: '', watchFor: 'Heavy panting, bright or grey gums, collapse, or they will not settle in shade. Move to cool air, wet the coat, and go now. Never an ice bath.', redFlag: true },
   { id: 'not_eating', label: 'Not eating', group: 'Energy & appetite', homeTip: 'Try warming food slightly or hand-feeding. Skipping one meal is common; two or more is not.', watchFor: 'No food for 24h, or refusing water.' },
   { id: 'not_drinking', label: 'Not drinking', group: 'Energy & appetite', homeTip: 'Offer fresh water in a new bowl, ice cubes, or low-sodium broth.', watchFor: 'Dry sticky gums or skin that stays tented when pinched = dehydration.' },
   { id: 'lethargy', label: 'Low energy', group: 'Energy & appetite', homeTip: 'Rest day, cool quiet spot, keep water close. Note whether it improves after sleep.', watchFor: 'Cannot be roused, wobbling, or combined with vomiting or pale gums.' },
@@ -130,8 +134,11 @@ export function runTriage(input: TriageInput): TriageResult {
   if (has('not_drinking') && d >= 1) escalate('red', 'Not drinking for a day or more is dangerous.');
   if (has('vomiting') && input.severity === 5) escalate('red', 'Relentless vomiting cannot wait.');
   if (has('lethargy') && has('pale_gums')) escalate('red', 'Weakness with pale gums suggests shock or bleeding.');
+  if (has('vomiting') && has('bloated')) escalate('red', 'Vomiting with a tight belly can be bloat. Treat it as an emergency.');
+  if (has('vomiting') && has('retching')) escalate('red', 'Retching after vomiting, or instead of it, is an early GDV sign.');
+  if (has('heat_stroke') && (has('collapse') || has('breathing') || has('lethargy'))) escalate('red', 'Heat plus collapse, hard breathing, or weakness cannot wait.');
 
-  if (has('vomiting') && (d >= 1 || input.severity >= 3)) escalate('amber', 'Vomiting that is persistent or moderate should be seen within 24h.');
+  if (has('vomiting') && (d >= 1 || input.severity >= 2)) escalate('amber', 'Vomiting that is persistent or more than a single episode should be seen within 24h.');
   if (has('diarrhea') && (d >= 2 || input.severity >= 3)) escalate('amber', 'Diarrhea lasting days or moderate in severity needs a vet check.');
   if (has('blood_stool')) escalate('amber', 'Blood in the stool always warrants a call.');
   if (has('not_eating') && d >= 1) escalate('amber', 'Skipping food for 24h is a red flag in dogs.');
@@ -173,12 +180,12 @@ export function runTriage(input: TriageInput): TriageResult {
   };
 
   const triage = state.triage;
-  const tips = picked.filter((s) => !s.redFlag || triage !== 'red').map((s) => ({ label: s.label, homeTip: s.homeTip, watchFor: s.watchFor }));
+  const tips = picked.map((s) => ({ label: s.label, homeTip: s.homeTip, watchFor: s.watchFor }));
   if (input.unsure && triage === 'green') {
     tips.unshift({
       label: 'Not sure what it is',
       homeTip: 'Write down what you noticed and when. Take a 15-second video of the behaviour. Check again in 12 hours and log whether it is the same, better, or worse.',
-      watchFor: 'Not eating, not drinking, vomiting, laboured breathing, pale gums, collapse, or a swollen belly. Any of these means call now.',
+      watchFor: 'Not eating, not drinking, vomiting, unproductive retching, laboured breathing, pale gums, collapse, a swollen belly, or heavy panting after heat. Any of these means call now.',
     });
   }
   return { triage, ...copy[triage], reasons, tips };

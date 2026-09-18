@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+import { readRemindersForExport } from './reminders';
 import { supabase } from './supabase';
 
 /**
@@ -35,7 +36,11 @@ export async function exportAllData(userId: string, email: string | undefined) {
     posts: posts.data ?? [],
     post_comments: comments.data ?? [],
     circles: circles.data ?? [],
-    note: 'Photos and videos are referenced by storage path. Email support@dogbetter.app for a copy of the files themselves.',
+    reminders: await readRemindersForExport(
+      userId,
+      (dogs.data ?? []).map((d) => d.id),
+    ),
+    note: 'Photos and videos are referenced by storage path. Email support@dogbetter.app for a copy of the files themselves. Calendar reminders live on this device and are included here.',
   };
   const dir = new Directory(Paths.cache, 'exports');
   if (!dir.exists) dir.create();

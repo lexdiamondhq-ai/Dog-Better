@@ -96,7 +96,7 @@ export default function Emergency() {
           <View style={{ flex: 1 }}>
             <Text variant="headline">Go now if you see any of these</Text>
             <Text variant="caption" tone="secondary">
-              Do not wait to log more. Call while someone drives.
+              Unproductive retching or heat panting with collapse is go-now, even without vomit. Call while someone drives.
             </Text>
           </View>
         </Surface>

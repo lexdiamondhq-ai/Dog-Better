@@ -1,30 +1,49 @@
+import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/ui/Icon';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { pickJarNext } from '@/engine/jarNext';
 import { JAR_POCKET } from '@/engine/rewards';
-import { useBetterLevel, usePoints } from '@/lib/points';
+import { usePoints } from '@/lib/points';
+import { queueWalkStart } from '@/lib/walkIntent';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
-function pocketLine(filled: number) {
-  if (filled <= 0) return 'Jar is empty';
-  if (filled >= JAR_POCKET) return 'Jar is full';
-  return `${filled} in the jar today`;
-}
+type MealKind = 'breakfast' | 'dinner' | 'treat';
 
-/** Daily biscuit pocket. Lifetime totals live on the points screen. */
-export function TreatPocket({ onPress }: { onPress: () => void }) {
+/** Daily biscuit pocket. Tap starts the next fill, not the lifetime tally. */
+export function TreatPocket({
+  mealKinds,
+  walksToday,
+  hasWeight,
+  onMeal,
+}: {
+  mealKinds: Iterable<string>;
+  walksToday: number;
+  hasWeight: boolean;
+  onMeal?: (kind: MealKind) => void;
+}) {
   const t = useTheme();
-  const { pocket } = usePoints();
-  const level = useBetterLevel();
+  const router = useRouter();
+  const { pocket, todayCounts } = usePoints();
+  const next = pickJarNext({ pocket, mealKinds, walksToday, counts: todayCounts, hasWeight });
+
+  const go = () => {
+    if (next.meal && onMeal) {
+      onMeal(next.meal);
+      return;
+    }
+    if (next.startWalk) queueWalkStart();
+    router.push(next.href);
+  };
 
   return (
-    <Tap onPress={onPress} haptic="selection" style={[styles.jar, { backgroundColor: t.bgRaised, borderColor: t.border }]} accessibilityLabel={`${pocketLine(pocket)}. ${level.name}`}>
-      <Icon name="paw" size={18} color={t.accentDeep} />
+    <Tap onPress={go} haptic="medium" style={[styles.jar, { backgroundColor: t.bgRaised, borderColor: t.border }]} accessibilityRole="button" accessibilityLabel={`${next.title}. ${next.hint}`}>
+      <Icon name={next.icon} size={18} color={t.accentDeep} />
       <View style={styles.copy}>
-        <Text variant="bodyStrong">{pocketLine(pocket)}</Text>
+        <Text variant="bodyStrong">{next.title}</Text>
         <View style={styles.slots}>
           {Array.from({ length: JAR_POCKET }, (_, i) => (
             <View
@@ -39,9 +58,10 @@ export function TreatPocket({ onPress }: { onPress: () => void }) {
           ))}
         </View>
         <Text variant="caption" tone="secondary">
-          {level.name}
+          {next.hint}
         </Text>
       </View>
+      <Icon name="chevron" size={14} color={t.textTertiary} />
     </Tap>
   );
 }

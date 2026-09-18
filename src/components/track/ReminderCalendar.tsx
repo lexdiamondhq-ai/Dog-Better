@@ -8,12 +8,23 @@ import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { kindMeta, monthDays, reminderColor, REMINDER_KINDS, useReminders, type Reminder, type ReminderKind } from '@/lib/reminders';
+import { WhenPickers } from '@/components/ui/WhenPickers';
+import { requestNotifications } from '@/lib/notify';
+import { nextClockSlot, prettyTime, kindMeta, monthDays, reminderColor, REMINDER_KINDS, useReminders, type Reminder, type ReminderKind } from '@/lib/reminders';
 import { useTheme } from '@/theme/ThemeProvider';
 import { palette, radius, space } from '@/theme/tokens';
 
 const WEEK = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-const SWATCHES = [palette.amber, palette.forest, palette.lapis, palette.terracotta, palette.garnet, palette.cocoa, palette.garnetLight, palette.sand];
+const SWATCHES: { color: string; name: string }[] = [
+  { color: palette.amber, name: 'Amber' },
+  { color: palette.forest, name: 'Forest' },
+  { color: palette.lapis, name: 'Lapis' },
+  { color: palette.terracotta, name: 'Terracotta' },
+  { color: palette.garnet, name: 'Garnet' },
+  { color: palette.cocoa, name: 'Cocoa' },
+  { color: palette.garnetLight, name: 'Rose' },
+  { color: palette.sand, name: 'Sand' },
+];
 
 export function ReminderCalendar({ dogId }: { dogId: string }) {
   const t = useTheme();
@@ -28,6 +39,7 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
   const [color, setColor] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
   const [landed, setLanded] = useState(false);
+  const [scheduleNote, setScheduleNote] = useState<string | null>(null);
 
   const days = useMemo(() => monthDays(cursor), [cursor]);
   const onPicked = reminders.onDay(picked);
@@ -62,7 +74,23 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
 
   const save = () => {
     const label = title.trim() || meta.label;
-    reminders.add({ dogId, kind, title: label, time: time.trim() || '08:00', date: picked, notes: notes.trim() || undefined, color: color ?? meta.color });
+    const when = time.trim() || nextClockSlot();
+    reminders.add({ dogId, kind, title: label, time: when, date: picked, notes: notes.trim() || undefined, color: color ?? meta.color });
+    const [hh, mm] = when.split(':').map(Number);
+    const [y, mo, d] = picked.split('-').map(Number);
+    const at = new Date(y, mo - 1, d, hh, mm, 0, 0);
+    void (async () => {
+      const allowed = await requestNotifications();
+      if (!allowed) {
+        setScheduleNote('Notifications are off for Dog Better. Allow them in iPhone Settings so this dose can ring.');
+        return;
+      }
+      if (at.getTime() <= Date.now() - 90_000) {
+        setScheduleNote('That date and time already passed, so this phone will not notify.');
+        return;
+      }
+      setScheduleNote(`This phone will notify at ${prettyTime(when)}. Lock the screen and wait.`);
+    })();
     setTitle('');
     setNotes('');
     setAdding(false);
@@ -196,15 +224,35 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
             ))}
           </View>
           <Field label="What" placeholder="Heart pill, nail trim, daycare drop-off" value={title} onChangeText={setTitle} />
-          <Field label="Time" placeholder="08:00" value={time} onChangeText={setTime} keyboardType="numbers-and-punctuation" />
+          <WhenPickers
+            date={picked}
+            time={time}
+            today={reminders.today}
+            onDate={(date) => {
+              setPicked(date);
+              const d = new Date(`${date}T12:00:00`);
+              if (!Number.isNaN(d.getTime())) setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
+            }}
+            onTime={setTime}
+          />
           <Field label="Notes" placeholder="Dose, who is picking up, crate note" value={notes} onChangeText={setNotes} />
           <Text variant="caption" tone="tertiary">
             Color
           </Text>
           <View style={styles.kinds}>
-            {SWATCHES.map((c) => (
-              <Tap key={c} onPress={() => setColor(c)} haptic="selection" style={[styles.color, { backgroundColor: c, borderColor: (color ?? meta.color) === c ? t.text : 'transparent' }]} />
-            ))}
+            {SWATCHES.map((s) => {
+              const selected = (color ?? meta.color) === s.color;
+              return (
+                <Tap
+                  key={s.color}
+                  onPress={() => setColor(s.color)}
+                  haptic="selection"
+                  accessibilityLabel={`${s.name} color`}
+                  accessibilityState={{ selected }}
+                  style={[styles.color, { backgroundColor: s.color, borderColor: selected ? t.text : 'transparent' }]}
+                />
+              );
+            })}
           </View>
           <View style={styles.head}>
             <Button label="Save event" onPress={save} style={{ flex: 1 }} />
@@ -212,8 +260,22 @@ export function ReminderCalendar({ dogId }: { dogId: string }) {
           </View>
         </Surface>
       ) : (
-        <Button label="Add an event" icon="plus" onPress={() => { setColor(meta.color); setAdding(true); }} />
+        <Button
+          label="Add an event"
+          icon="plus"
+          onPress={() => {
+            setColor(meta.color);
+            setTime(nextClockSlot());
+            setScheduleNote(null);
+            setAdding(true);
+          }}
+        />
       )}
+      {scheduleNote ? (
+        <Text variant="caption" tone="secondary">
+          {scheduleNote}
+        </Text>
+      ) : null}
     </View>
   );
 }

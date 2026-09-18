@@ -27,6 +27,7 @@ import { pickDuty, useHeatF, useWalksToday } from '@/lib/duty';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
 import { rosterMedLabel, useReminders } from '@/lib/reminders';
+import { humanizeError } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { formatWeight } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
@@ -54,6 +55,7 @@ export default function Today() {
   const heatF = useHeatF();
   const walksToday = useWalksToday(dog?.id);
   const [logging, setLogging] = useState<string | null>(null);
+  const [mealError, setMealError] = useState<string | null>(null);
   const [switcher, setSwitcher] = useState(false);
 
   const name = dog?.name ?? 'your dog';
@@ -71,15 +73,28 @@ export default function Today() {
   const logMeal = async (kind: 'breakfast' | 'dinner' | 'treat') => {
     if (!dog || !user) return;
     setLogging(kind);
-    const existing = activity.mealsToday.find((m) => m.kind === kind);
-    if (existing) await supabase.from('meals').delete().eq('id', existing.id);
-    else {
-      const treatN = activity.mealsToday.filter((m) => m.kind === 'treat').length;
-      await supabase.from('meals').insert({ dog_id: dog.id, owner_id: user.id, kind });
-      await award({ kind: 'meal', key: `meal:${dog.id}:${kind}:${kind === 'treat' ? treatN : 'once'}`, dogId: dog.id });
+    setMealError(null);
+    try {
+      const existing = activity.mealsToday.find((m) => m.kind === kind);
+      if (existing) {
+        const { error } = await supabase.from('meals').delete().eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const treatN = activity.mealsToday.filter((m) => m.kind === 'treat').length;
+        const { error } = await supabase.from('meals').insert({ dog_id: dog.id, owner_id: user.id, kind });
+        if (error) throw error;
+        if (kind === 'treat') {
+          await award({ kind: 'treat', key: `treat:${dog.id}:${treatN}`, dogId: dog.id });
+        } else {
+          await award({ kind: 'meal', key: `meal:${dog.id}:${kind}:once`, dogId: dog.id });
+        }
+      }
+      await activity.reload();
+    } catch (e) {
+      setMealError(humanizeError(e, 'Could not save that meal.'));
+    } finally {
+      setLogging(null);
     }
-    await activity.reload();
-    setLogging(null);
   };
 
   const onPrimary = () => router.push(duty.href);
@@ -134,7 +149,12 @@ export default function Today() {
           </View>
         </View>
 
-        <TreatPocket onPress={() => router.push('/(app)/settings/points')} />
+        <TreatPocket
+          mealKinds={activity.mealsToday.map((m) => m.kind)}
+          walksToday={walksToday}
+          hasWeight={!!dog?.weight_kg}
+          onMeal={(kind) => void logMeal(kind)}
+        />
 
         {dog ? (
           <View style={[styles.care, { backgroundColor: t.bgRaised, borderColor: t.border }]}>
@@ -164,12 +184,33 @@ export default function Today() {
           </View>
         ) : null}
 
+        <Tap
+          onPress={() => router.push('/(app)/emergency')}
+          haptic="heavy"
+          style={[styles.emergency, { backgroundColor: t.bgRaised, borderColor: t.bad }]}
+          accessibilityRole="button"
+          accessibilityLabel="Open emergency mode">
+          <Icon name="emergency" size={20} color={t.bad} />
+          <View style={{ flex: 1 }}>
+            <Text variant="bodyStrong">Emergency</Text>
+            <Text variant="caption" tone="secondary">
+              Clock, vet facts, call, and directions
+            </Text>
+          </View>
+          <Icon name="chevron" size={14} color={t.textTertiary} />
+        </Tap>
+
         <Section title="On the roster">
           <View style={styles.facts}>
             <Fact icon="walk" label="Walk" value={walksToday ? 'Done' : nextWalk ? nextWalk.time : 'Open'} onPress={() => router.push('/(app)/(tabs)/track')} />
             <Fact icon="pill" label="Next dose" value={rosterMedLabel(nextMed)} onPress={() => router.push('/(app)/calendar')} />
-            <Fact icon="sun" label="Heat" value={heatF != null ? `${Math.round(heatF)}°` : '--'} />
-            <Fact icon="document" label="Tonight" value="Sheet" onPress={() => router.push('/(app)/care-team')} />
+            <Fact
+              icon="sun"
+              label="Heat"
+              value={heatF != null ? `${Math.round(heatF)}°` : '--'}
+              onPress={() => router.push('/(app)/walk-spots')}
+            />
+            <Fact icon="sparkle" label="Score" value={`${activity.score.total}`} onPress={() => router.push('/(app)/score')} />
           </View>
         </Section>
 
@@ -188,11 +229,16 @@ export default function Today() {
                   <Text variant="label" style={{ color: done ? t.good : t.text }}>
                     {m.label}
                   </Text>
-                  {!done ? <EarnBadge points={REWARDS.meal.points} /> : null}
+                  {!done ? <EarnBadge points={m.kind === 'treat' ? REWARDS.treat.points : REWARDS.meal.points} /> : null}
                 </Tap>
               );
             })}
           </View>
+          {mealError ? (
+            <Text variant="caption" tone="bad">
+              {mealError}
+            </Text>
+          ) : null}
         </Section>
 
         <Section title="This dog today">
@@ -208,6 +254,7 @@ export default function Today() {
             <HelpRow icon="scan" label="Check a treat" detail="Barcode or ingredients, sized to them" onPress={() => router.push('/(app)/scan')} />
             <HelpRow icon="link" label="Shop for this dog" detail="Amazon links with our tag" onPress={() => router.push('/(app)/shop')} />
             <HelpRow icon="park" label="Parks and trails" detail="Dog parks, areas, and trails. Pick one and start a walk" onPress={() => router.push('/(app)/walk-spots')} />
+            <HelpRow icon="places" label="How a spot feels" detail="Crowd pulse on parks, trails, and patios" onPress={() => router.push('/(app)/places')} />
             <HelpRow icon="detective" label="Log a symptom" detail="What you see, then a next step" onPress={() => router.push('/(app)/symptoms')} />
             <HelpRow icon="walk" label="Open Track" detail="The ledger: walks, weight, food" onPress={() => router.push('/(app)/(tabs)/track')} last />
           </GroupedList>
@@ -270,6 +317,7 @@ const styles = StyleSheet.create({
   care: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: space.md, paddingRight: space.sm, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   careMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
   careSend: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  emergency: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   badge: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   portraitBody: { alignItems: 'center', paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.sm, zIndex: 2 },
   planLine: { color: 'rgba(250,243,230,0.86)', textAlign: 'center', maxWidth: 320 },

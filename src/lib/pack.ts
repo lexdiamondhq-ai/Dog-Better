@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from './auth';
 import type { Post, Profile } from './database.types';
+import { useInbox } from './inbox';
 import { supabase } from './supabase';
 
 export type FeedPost = Post & {
@@ -76,6 +77,7 @@ export async function toggleLike(postId: string, userId: string, liked: boolean)
 
 export function useFeed(opts?: { authorId?: string; circleId?: string | null }) {
   const { user } = useAuth();
+  const inbox = useInbox();
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -126,8 +128,9 @@ export function useFeed(opts?: { authorId?: string; circleId?: string | null }) 
       if (!user) return;
       setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, liked: !p.liked, likes: p.likes + (p.liked ? -1 : 1) } : p)));
       await toggleLike(post.id, user.id, post.liked);
+      void inbox.refresh();
     },
-    [user],
+    [inbox, user],
   );
 
   const remove = useCallback(

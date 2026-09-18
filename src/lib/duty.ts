@@ -68,6 +68,7 @@ export function pickDuty(input: { name: string; dueToday: Reminder[]; nextMed?: 
   return { line: `The roster is clear. Point the camera at ${name}.`, label: 'Look at this photo', icon: 'sparkle', href: '/(app)/look' };
 }
 
+/** Heat is optional. Never prompt. Only fill the tile if location was already granted on a map or walk. */
 export function useHeatF() {
   const [heatF, setHeatF] = useState<number | null>(null);
 
@@ -75,7 +76,7 @@ export function useHeatF() {
     let alive = true;
     (async () => {
       try {
-        const perm = await Location.requestForegroundPermissionsAsync();
+        const perm = await Location.getForegroundPermissionsAsync();
         if (!perm.granted) return;
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&current=temperature_2m&temperature_unit=fahrenheit`;

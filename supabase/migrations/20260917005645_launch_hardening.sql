@@ -1,5 +1,5 @@
 -- Launch hardening: moderation, circle privacy, premium mirror, AI quota, analytics, storage limits.
--- Applied to project zdhpwcwxbxmorfnhufhq. Keep this file as the source of truth for the change.
+-- Applied to project zdhpwcwxbxmorfnhufhq as 20260917005645. Do not re-apply there.
 
 -- 1. Posts carry an explicit kind so feeds split photo / video server-side instead of by file extension.
 alter table public.posts add column if not exists kind text not null default 'photo';

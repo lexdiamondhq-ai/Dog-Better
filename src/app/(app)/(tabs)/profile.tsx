@@ -140,7 +140,9 @@ export default function Profile() {
       <Section title="Care team">
         <GroupedList>
           <Row icon="careTeam" label="Care sheet" value="Sitters, walkers, and family" onPress={() => router.push('/(app)/care-team')} />
-          <Row icon="vet" label="Clinic pack" value="Weight, symptoms, sheet for the exam room" onPress={() => router.push('/(app)/clinic')} last />
+          <Row icon="vet" label="Clinic pack" value="Weight, symptoms, sheet for the exam room" onPress={() => router.push('/(app)/clinic')} />
+          <Row icon="sparkle" label="Today's score" value="Why the number is what it is" onPress={() => router.push('/(app)/score')} />
+          <Row icon="emergency" label="Emergency" value="Clock, vet facts, call, directions" onPress={() => router.push('/(app)/emergency')} last />
         </GroupedList>
       </Section>
 

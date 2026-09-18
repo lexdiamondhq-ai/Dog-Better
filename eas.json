@@ -6,11 +6,7 @@
   },
   "build": {
     "base": {
-      "ios": { "resourceClass": "m-medium" },
-      "env": {
-        "EXPO_PUBLIC_DEV_LOGIN_EMAIL": "",
-        "EXPO_PUBLIC_DEV_LOGIN_PASSWORD": ""
-      }
+      "ios": { "resourceClass": "m-medium" }
     },
     "development": {
       "extends": "base",
@@ -30,11 +26,6 @@
     }
   },
   "submit": {
-    "production": {
-      "ios": {
-        "ascAppId": "REPLACE_WITH_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "REPLACE_WITH_APPLE_TEAM_ID"
-      }
-    }
+    "production": {}
   }
 }

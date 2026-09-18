@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Keyboard, StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Text } from './Text';
@@ -12,21 +12,26 @@ type Props = TextInputProps & {
   suffix?: string;
 };
 
-export function Field({ label, hint, error, suffix, style, ...rest }: Props) {
+export function Field({ label, hint, error, suffix, style, accessibilityLabel, accessibilityHint, ...rest }: Props) {
   const t = useTheme();
+  const labelId = useId();
   const [focused, setFocused] = useState(false);
   const borderColor = error ? t.bad : focused ? t.brand : t.border;
 
   return (
     <View style={styles.wrap}>
       {label ? (
-        <Text variant="label" tone="secondary">
+        <Text nativeID={labelId} variant="label" tone="secondary">
           {label}
         </Text>
       ) : null}
       <View style={[styles.box, { backgroundColor: t.bgRaised, borderColor }]}>
         <TextInput
           {...rest}
+          nativeID={label ? `${labelId}-input` : undefined}
+          accessibilityLabelledBy={label ? labelId : undefined}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityHint={accessibilityHint ?? error ?? hint}
           blurOnSubmit={rest.blurOnSubmit ?? !rest.multiline}
           returnKeyType={rest.returnKeyType ?? (rest.multiline ? 'default' : 'done')}
           onFocus={(e) => {

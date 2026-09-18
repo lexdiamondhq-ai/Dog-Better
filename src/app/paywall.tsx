@@ -23,7 +23,7 @@ const FEATURES: { icon: IconName; title: string; line: string }[] = [
   { icon: 'pill', title: 'Medication reader', line: 'A visit photo or file is read for meds, written on the profile, and scheduled with reminders.' },
   { icon: 'document', title: 'Clinic pack', line: 'Weight trend, symptom timeline, and the care sheet as a file the clinic can keep.' },
   { icon: 'careTeam', title: 'Every dog in the house', line: 'One dog is free. Premium adds unlimited profiles, each with their own records.' },
-  { icon: 'camera', title: 'Unlimited Looks', line: 'Point the camera at a paw, a bag, or a label. Three a day stay free.' },
+  { icon: 'camera', title: 'Forty Looks a day', line: 'Point the camera at a paw, a bag, or a label. Three a day stay free.' },
   { icon: 'learn', title: 'The full Learn library', line: 'Five sessions stay free. Eighty rotate for Premium.' },
   { icon: 'shield', title: 'No partner cards', line: 'Nothing between you and your dog.' },
 ];

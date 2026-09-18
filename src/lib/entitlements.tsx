@@ -63,7 +63,7 @@ type Api = {
 };
 
 const NONE: Entitlement = { active: false, plan: null, trial: false, expiresAt: null, willRenew: false, managementURL: null };
-const SEEN_KEY = 'dogbetter.paywall.seen.v1';
+const seenKey = (userId: string) => `dogbetter.paywall.seen.v2.${userId}`;
 
 const RC_KEY = Platform.select({ ios: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY, android: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY }) ?? '';
 const NATIVE_READY = Boolean(NativeModules.RNPurchases);
@@ -144,13 +144,38 @@ export function EntitlementsProvider({ children }: PropsWithChildren) {
   const [offers, setOffers] = useState<Partial<Record<Plan, PlanOffer>>>({});
   const [available, setAvailable] = useState(false);
   const [paywallSeen, setPaywallSeen] = useState(true);
-  const [loaded, setLoaded] = useState(false);
+  const [seenReady, setSeenReady] = useState(false);
+  const [storeLoaded, setStoreLoaded] = useState(false);
+  const loaded = storeLoaded && seenReady;
 
   useEffect(() => {
-    AsyncStorage.getItem(SEEN_KEY)
-      .then((seen) => setPaywallSeen(seen === '1'))
-      .catch(() => {});
-  }, []);
+    if (!ready) return;
+    let cancelled = false;
+    if (!user) {
+      void Promise.resolve().then(() => {
+        if (!cancelled) {
+          setPaywallSeen(true);
+          setSeenReady(true);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+    AsyncStorage.getItem(seenKey(user.id))
+      .then((seen) => {
+        if (!cancelled) setPaywallSeen(seen === '1');
+      })
+      .catch(() => {
+        if (!cancelled) setPaywallSeen(false);
+      })
+      .finally(() => {
+        if (!cancelled) setSeenReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, user]);
 
   // Identity: RevenueCat app user id follows the Supabase user so the webhook can map back.
   useEffect(() => {
@@ -159,7 +184,7 @@ export function EntitlementsProvider({ children }: PropsWithChildren) {
     if (!STORE_AVAILABLE) {
       // No StoreKit in this build (Expo Go, or no RevenueCat key). Resolve on the next tick so the gate can proceed.
       void Promise.resolve().then(() => {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) setStoreLoaded(true);
       });
       return () => {
         cancelled = true;
@@ -179,7 +204,7 @@ export function EntitlementsProvider({ children }: PropsWithChildren) {
       } catch {
         if (!cancelled) setAvailable(false);
       } finally {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled) setStoreLoaded(true);
       }
     })();
     return () => {
@@ -199,8 +224,8 @@ export function EntitlementsProvider({ children }: PropsWithChildren) {
 
   const markPaywallSeen = useCallback(async () => {
     setPaywallSeen(true);
-    await AsyncStorage.setItem(SEEN_KEY, '1');
-  }, []);
+    if (user) await AsyncStorage.setItem(seenKey(user.id), '1');
+  }, [user]);
 
   const purchase = useCallback(
     async (plan: Plan) => {
@@ -229,9 +254,9 @@ export function EntitlementsProvider({ children }: PropsWithChildren) {
   }, []);
 
   const reset = useCallback(async () => {
-    await AsyncStorage.removeItem(SEEN_KEY);
+    if (user) await AsyncStorage.removeItem(seenKey(user.id));
     setPaywallSeen(false);
-  }, []);
+  }, [user]);
 
   const value = useMemo<Api>(
     () => ({ loaded, available, entitlement, isPremium: entitlement.active, offers, paywallSeen, markPaywallSeen, purchase, restore, reset }),

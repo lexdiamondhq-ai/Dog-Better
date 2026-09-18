@@ -2,6 +2,7 @@ import type { IconName } from '@/components/ui/Icon';
 
 export type RewardKind =
   | 'meal'
+  | 'treat'
   | 'walk'
   | 'photo'
   | 'post'
@@ -25,7 +26,8 @@ export type Reward = {
 };
 
 export const REWARDS: Record<RewardKind, Reward> = {
-  meal: { kind: 'meal', points: 8, label: 'Log a meal', hint: 'Breakfast, dinner, or a treat on Today', icon: 'meal', dailyCap: 4 },
+  meal: { kind: 'meal', points: 8, label: 'Log a meal', hint: 'Breakfast or dinner on Today', icon: 'meal', dailyCap: 2 },
+  treat: { kind: 'treat', points: 8, label: 'Log a treat', hint: 'Tap Treat on Today', icon: 'paw', dailyCap: 3 },
   walk: { kind: 'walk', points: 25, label: 'Finish a walk', hint: 'Start and save a walk on Track', icon: 'walk', dailyCap: 3 },
   photo: { kind: 'photo', points: 15, label: 'Save a photo', hint: 'Snap paws, ears, or a moment', icon: 'camera', dailyCap: 6 },
   post: { kind: 'post', points: 20, label: 'Share with the pack', hint: 'Post a moment in Community', icon: 'happy', dailyCap: 3 },

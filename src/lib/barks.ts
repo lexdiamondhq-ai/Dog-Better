@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { useAuth } from './auth';
 import type { Post } from './database.types';
+import { useInbox } from './inbox';
 import { decorate, deletePostWithMedia, toggleLike, type FeedPost } from './pack';
 import { supabase } from './supabase';
 
@@ -23,6 +24,7 @@ export async function fetchBarks(userId: string): Promise<FeedPost[]> {
 
 export function useBarks() {
   const { user } = useAuth();
+  const inbox = useInbox();
   const [barks, setBarks] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,8 +44,9 @@ export function useBarks() {
       if (!user) return;
       setBarks((prev) => prev.map((p) => (p.id === bark.id ? { ...p, liked: !p.liked, likes: p.likes + (p.liked ? -1 : 1) } : p)));
       await toggleLike(bark.id, user.id, bark.liked);
+      void inbox.refresh();
     },
-    [user],
+    [inbox, user],
   );
 
   const remove = useCallback(

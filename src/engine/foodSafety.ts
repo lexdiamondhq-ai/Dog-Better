@@ -13,6 +13,8 @@ export type Hazard = {
   why: string;
   /** Optional weight-scaled dose note. */
   dose?: (weightKg: number) => string;
+  /** Nearby label noise that means this is a nutrition line, not an added hazard. */
+  ignoreNear?: RegExp;
 };
 
 export const HAZARDS: Hazard[] = [
@@ -115,15 +117,17 @@ export const HAZARDS: Hazard[] = [
     id: 'salt',
     label: 'High salt',
     level: 'caution',
-    patterns: [/\bsalt\b/i, /sodium/i, /brine/i],
+    patterns: [/\bsalted\b/i, /\bsalt\b/i, /brine/i, /sodium chloride/i],
     why: 'Salty snacks cause excessive thirst and, in quantity, sodium ion poisoning.',
+    ignoreNear: /crude|guaranteed analysis|ascorbate|bicarbonate|selenite/i,
   },
   {
     id: 'sugar',
     label: 'Added sugar',
     level: 'caution',
-    patterns: [/\bsugar\b/i, /syrup/i, /glucose/i, /fructose/i, /dextrose/i, /honey/i, /molasses/i],
+    patterns: [/\bsugar\b/i, /corn syrup/i, /cane sugar/i, /brown sugar/i, /glucose/i, /fructose/i, /dextrose/i, /honey/i, /molasses/i],
     why: 'Empty calories that drive weight gain and dental disease.',
+    ignoreNear: /sugar[- ]free|no added sugar|without sugar|unsweetened|0\s*g\s*sugar/i,
   },
   {
     id: 'sweeteners',
@@ -143,7 +147,7 @@ export const HAZARDS: Hazard[] = [
     id: 'fatty',
     label: 'Fried or fatty',
     level: 'caution',
-    patterns: [/fried/i, /\blard\b/i, /bacon/i, /sausage/i, /\bfat\b/i, /shortening/i, /palm oil/i],
+    patterns: [/fried/i, /\blard\b/i, /bacon/i, /sausage/i, /shortening/i, /palm oil/i],
     why: 'Rich fatty foods are the number one trigger of pancreatitis.',
   },
   {
@@ -237,10 +241,11 @@ export function analyzeIngredients(opts: {
   for (const h of HAZARDS) {
     for (const p of h.patterns) {
       const m = text.match(p);
-      if (m) {
-        flags.push({ id: h.id, label: h.label, level: h.level, why: h.why, dose: weight && h.dose ? h.dose(weight) : undefined, matched: m[0] });
-        break;
-      }
+      if (!m || m.index == null) continue;
+      const around = text.slice(Math.max(0, m.index - 28), m.index + m[0].length + 20);
+      if (h.ignoreNear?.test(around)) continue;
+      flags.push({ id: h.id, label: h.label, level: h.level, why: h.why, dose: weight && h.dose ? h.dose(weight) : undefined, matched: m[0] });
+      break;
     }
   }
 

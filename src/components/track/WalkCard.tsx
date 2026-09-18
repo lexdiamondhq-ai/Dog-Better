@@ -14,7 +14,7 @@ import { humanizeError } from '@/lib/errors';
 import { REWARDS } from '@/engine/rewards';
 import { usePoints } from '@/lib/points';
 import { usePreferences } from '@/lib/preferences';
-import { takeWalkStart } from '@/lib/walkIntent';
+import { takeWalkStart, watchWalkStart } from '@/lib/walkIntent';
 import { fetchRecentWalks, formatDuration, pathMetres, saveWalk, useLiveWalk, useStepsToday } from '@/lib/walks';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -70,6 +70,12 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
       if (queued) void begin(queued.placeName);
     }, [begin]),
   );
+
+  useEffect(() => {
+    return watchWalkStart((queued) => {
+      void begin(queued.placeName);
+    });
+  }, [begin]);
 
   useEffect(() => {
     if (!live.walk) return;

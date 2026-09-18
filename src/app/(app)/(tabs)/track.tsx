@@ -19,7 +19,9 @@ import { usePoints } from '@/lib/points';
 import { humanize, relativeTime, useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
+import { useWalksToday } from '@/lib/duty';
 import { usePreferences } from '@/lib/preferences';
+import { humanizeError } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { formatWeight, fromKg, parseWeightInput } from '@/lib/units';
 import { kindMeta, reminderColor, useReminders } from '@/lib/reminders';
@@ -33,12 +35,14 @@ export default function Track() {
   const { dog, refresh } = useDogs();
   const { award } = usePoints();
   const a = useDogActivity(dog);
+  const walksToday = useWalksToday(dog?.id);
   const { weightUnit } = usePreferences();
   const reminders = useReminders(dog?.id);
   const nextEvent = reminders.upcoming[0];
   const [weightInput, setWeightInput] = useState('');
   const [showWeight, setShowWeight] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [weightError, setWeightError] = useState<string | null>(null);
 
   const weightKg = dog?.weight_kg ? Number(dog.weight_kg) : null;
   const kcal = weightKg ? dailyCalories(weightKg) : null;
@@ -47,15 +51,27 @@ export default function Track() {
 
   const saveWeight = async () => {
     const kg = parseWeightInput(weightInput, weightUnit);
-    if (!dog || !user || kg == null) return;
+    if (!dog || !user) return;
+    if (kg == null) {
+      setWeightError('Enter a weight that looks like a number.');
+      return;
+    }
     setSaving(true);
-    await supabase.from('weight_entries').insert({ dog_id: dog.id, owner_id: user.id, weight_kg: kg });
-    await award({ kind: 'weight', key: `weight:${dog.id}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
-    await supabase.from('dogs').update({ weight_kg: kg }).eq('id', dog.id);
-    await Promise.all([refresh(), a.reload()]);
-    setWeightInput('');
-    setShowWeight(false);
-    setSaving(false);
+    setWeightError(null);
+    try {
+      const { error: insertError } = await supabase.from('weight_entries').insert({ dog_id: dog.id, owner_id: user.id, weight_kg: kg });
+      if (insertError) throw insertError;
+      await award({ kind: 'weight', key: `weight:${dog.id}:${new Date().toISOString().slice(0, 10)}`, dogId: dog.id });
+      const { error: updateError } = await supabase.from('dogs').update({ weight_kg: kg }).eq('id', dog.id);
+      if (updateError) throw updateError;
+      await Promise.all([refresh(), a.reload()]);
+      setWeightInput('');
+      setShowWeight(false);
+    } catch (e) {
+      setWeightError(humanizeError(e, 'Could not save that weight.'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const trend = (() => {
@@ -71,7 +87,7 @@ export default function Track() {
     <Screen dock refreshing={a.refreshing} onRefresh={a.refresh}>
       <ScreenHeader title="Track" subtitle={`${dog?.name ?? 'Your dog'} · walks, food, weight, health`} />
 
-      <TreatPocket onPress={() => router.push('/(app)/settings/points')} />
+      <TreatPocket mealKinds={a.mealsToday.map((m) => m.kind)} walksToday={walksToday} hasWeight={!!dog?.weight_kg} />
 
       {dog ? (
         <Tap onPress={() => router.push('/(app)/calendar')} haptic="selection" style={[styles.cal, { backgroundColor: t.bgRaised, borderColor: t.border }]} accessibilityLabel="Open calendar">
@@ -151,11 +167,28 @@ export default function Track() {
             </View>
           </View>
           {showWeight ? (
-            <View style={styles.weightForm}>
-              <View style={{ flex: 1 }}>
-                <Field placeholder={weightUnit === 'lb' ? 'e.g. 28.5' : 'e.g. 12.4'} value={weightInput} onChangeText={setWeightInput} keyboardType="decimal-pad" suffix={weightUnit} autoFocus />
+            <View style={{ gap: space.sm }}>
+              <View style={styles.weightForm}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    placeholder={weightUnit === 'lb' ? 'e.g. 28.5' : 'e.g. 12.4'}
+                    value={weightInput}
+                    onChangeText={(v) => {
+                      setWeightInput(v);
+                      if (weightError) setWeightError(null);
+                    }}
+                    keyboardType="decimal-pad"
+                    suffix={weightUnit}
+                    autoFocus
+                  />
+                </View>
+                <Button label={`Save  +${REWARDS.weight.points}`} loading={saving} onPress={saveWeight} />
               </View>
-              <Button label={`Save  +${REWARDS.weight.points}`} loading={saving} onPress={saveWeight} />
+              {weightError ? (
+                <Text variant="caption" tone="bad">
+                  {weightError}
+                </Text>
+              ) : null}
             </View>
           ) : null}
           {a.weights.length > 1 ? <Sparkline values={a.weights.map((w) => Number(w.weight_kg)).reverse()} /> : null}

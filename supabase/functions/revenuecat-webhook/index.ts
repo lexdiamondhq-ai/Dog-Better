@@ -44,18 +44,34 @@ Deno.serve(async (req) => {
   const ending = ['EXPIRATION', 'CANCELLATION', 'BILLING_ISSUE', 'SUBSCRIPTION_PAUSED'];
   const active = ['INITIAL_PURCHASE', 'RENEWAL', 'PRODUCT_CHANGE', 'UNCANCELLATION', 'NON_RENEWING_PURCHASE', 'TRANSFER', 'TEMPORARY_ENTITLEMENT_GRANT'];
 
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+  const { data: current } = await admin.from('profiles').select('premium_until').eq('id', uid).maybeSingle();
+  const currentMs = current?.premium_until ? new Date(current.premium_until as string).getTime() : 0;
+  const incomingMs = event.expiration_at_ms ?? 0;
+
   let premiumUntil: string | null | undefined;
   if (active.includes(event.type)) {
-    premiumUntil = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : null;
+    if (!event.expiration_at_ms) {
+      // A prepaid or lifetime event without an expiry must not wipe a valid period.
+      return json({ ok: true, skipped: 'no_expiration', uid });
+    }
+    if (incomingMs + 1000 < currentMs && currentMs > Date.now()) {
+      return json({ ok: true, skipped: 'stale_active', uid });
+    }
+    premiumUntil = new Date(event.expiration_at_ms).toISOString();
   } else if (event.type === 'EXPIRATION') {
+    // A late EXPIRATION must not overwrite a renewal that already moved the date forward.
+    if (currentMs > Date.now() + 60_000) return json({ ok: true, skipped: 'newer_entitlement', uid });
     premiumUntil = new Date().toISOString();
   } else if (ending.includes(event.type)) {
     // Cancellation keeps access until the period ends; RevenueCat still sends expiration_at_ms.
+    if (event.expiration_at_ms && incomingMs + 1000 < currentMs && currentMs > Date.now()) {
+      return json({ ok: true, skipped: 'stale_ending', uid });
+    }
     premiumUntil = event.expiration_at_ms ? new Date(event.expiration_at_ms).toISOString() : undefined;
   }
   if (premiumUntil === undefined) return json({ ok: true, skipped: event.type });
 
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
   const { error } = await admin.from('profiles').update({ premium_until: premiumUntil, rc_app_user_id: event.app_user_id }).eq('id', uid);
   if (error) {
     console.error('revenuecat-webhook update failed', uid, error);

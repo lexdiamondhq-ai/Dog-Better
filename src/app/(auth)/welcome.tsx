@@ -1,9 +1,9 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ export default function Welcome() {
   const insets = useSafeAreaInsets();
   const { preview } = useLocalSearchParams<{ preview?: string }>();
   const previewing = preview === '1';
+  const [play, setPlay] = useState(0);
   const [busy, setBusy] = useState<'apple' | 'google' | 'dev' | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
@@ -34,6 +35,12 @@ export default function Welcome() {
   useEffect(() => {
     if (Platform.OS === 'ios') AppleAuthentication.isAvailableAsync().then(setAppleAvailable);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setPlay((n) => n + 1);
+    }, []),
+  );
 
   const run = async (which: 'apple' | 'google' | 'dev') => {
     setBusy(which);
@@ -81,18 +88,22 @@ export default function Welcome() {
         )}
 
         <View style={styles.hero}>
-          <Animated.View entering={FadeInDown.duration(320)} style={styles.lockup}>
-            <OnboardingMascot cycle size="lg" labeled />
-            <Image
-              source={require('@/assets/brand/wordmark-tagline.png')}
-              style={styles.wordmark}
-              contentFit="contain"
-              tintColor={night ? palette.furLight : undefined}
-            />
-            <Text variant="body" tone="secondary" align="center">
-              A cartoon pup. A few tricks. Then we get to work.
-            </Text>
-          </Animated.View>
+          <View style={styles.lockup}>
+            <OnboardingMascot key={play} cycle size="lg" labeled />
+            <Animated.View entering={FadeInDown.duration(320).delay(1500)}>
+              <Image
+                source={require('@/assets/brand/wordmark-tagline.png')}
+                style={styles.wordmark}
+                contentFit="contain"
+                tintColor={night ? palette.furLight : undefined}
+              />
+            </Animated.View>
+            <Animated.View entering={FadeInDown.duration(320).delay(1650)}>
+              <Text variant="body" tone="secondary" align="center">
+                A cartoon pup walks in. Then a sit, a speak, and a flop.
+              </Text>
+            </Animated.View>
+          </View>
         </View>
 
         {previewing ? (
@@ -100,7 +111,7 @@ export default function Welcome() {
             This is the first-open screen. Sign-in waits under here for new people.
           </Text>
         ) : (
-          <Animated.View entering={FadeInUp.duration(400).delay(400)} style={styles.actions}>
+          <Animated.View entering={FadeInUp.duration(400).delay(1700)} style={styles.actions}>
             {appleAvailable ? <AuthButton icon="apple" label="Continue with Apple" onPress={() => run('apple')} busy={busy === 'apple'} disabled={busy !== null} look="dark" /> : null}
             <AuthButton icon="google" label="Continue with Google" onPress={() => run('google')} busy={busy === 'google'} disabled={busy !== null} look="light" />
             <AuthButton icon="mail" label="Continue with email" onPress={() => router.push('/(auth)/sign-in')} disabled={busy !== null} look="accent" />
@@ -159,14 +170,14 @@ function GoogleMark() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingHorizontal: space.xl },
+  root: { flex: 1, paddingHorizontal: space.xl, overflow: 'visible' },
   back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   glow: { position: 'absolute', top: -80, left: -60, right: -60, height: 460 },
   glowInner: { flex: 1, borderRadius: 300 },
   pawLeft: { position: 'absolute', left: -80, bottom: 200, transform: [{ rotate: '-14deg' }] },
   pawRight: { position: 'absolute', right: -70, top: 120, transform: [{ rotate: '18deg' }] },
-  hero: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  lockup: { alignItems: 'center', gap: space.md },
+  hero: { flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'visible' },
+  lockup: { alignItems: 'center', gap: space.md, overflow: 'visible' },
   wordmark: { width: 300, height: 72 },
   actions: { gap: space.sm },
   button: { height: 56, borderRadius: radius.pill, flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.md },
