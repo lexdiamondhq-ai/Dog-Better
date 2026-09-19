@@ -1,7 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 
 import { scrapePdfText } from '@/engine/pdfText';
-import { localReadSheet, mergeSheetReads, normalizeSheetRead, type SheetRead } from '@/engine/sheetMeds';
+import { emptyClinic, localReadSheet, mergeSheetReads, normalizeSheetRead, type SheetRead } from '@/engine/sheetMeds';
 
 import { callAi, photoToBase64, type AiReason } from './ai';
 import type { Dog } from './database.types';
@@ -15,7 +15,7 @@ function dogLine(dog: Dog | null) {
 type ModelSheet = Record<string, unknown>;
 
 function emptySheet(reason?: AiReason): VisitSheetResult {
-  return { medications: [], meals: [], followUps: [], found: false, source: 'local', reason };
+  return { medications: [], meals: [], followUps: [], clinic: emptyClinic(), found: false, source: 'local', reason };
 }
 
 export type VisitSheetResult = SheetRead & { reason?: AiReason };
@@ -60,11 +60,27 @@ async function readFileBase64(uri: string) {
   return FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
 }
 
+function scoreRead(read: VisitSheetResult) {
+  return (
+    read.medications.length * 3 +
+    read.followUps.length * 2 +
+    (read.clinic?.vetPhone ? 1 : 0) +
+    (read.clinic?.vetName ? 1 : 0) +
+    (read.clinic?.microchip ? 1 : 0) +
+    (read.found ? 1 : 0)
+  );
+}
+
 function preferRead(current: VisitSheetResult, next: VisitSheetResult): VisitSheetResult {
-  if (next.medications.length > current.medications.length) return next;
+  if (scoreRead(next) > scoreRead(current)) return next;
   if (next.found && !current.found) return next;
   if (!current.reason && next.reason) return { ...current, reason: next.reason };
   return current;
+}
+
+function fillFromText(read: VisitSheetResult, text?: string | null): VisitSheetResult {
+  if (!text?.trim()) return read;
+  return { ...mergeSheetReads([read, localReadSheet(text, 'local')]), reason: read.reason };
 }
 
 /**
@@ -85,7 +101,7 @@ export async function readVisitSheet(input: {
 
   if (input.text) {
     const ai = await callAi<ModelSheet>({ kind: 'sheet', dogLine: who, text: input.text });
-    if (ai.ok) return normalizeSheetRead(ai.result, 'ai');
+    if (ai.ok) return fillFromText(normalizeSheetRead(ai.result, 'ai'), input.text);
     const local = localReadSheet(input.text, 'local');
     return { ...local, reason: local.found ? undefined : ai.reason };
   }
@@ -100,11 +116,11 @@ export async function readVisitSheet(input: {
   let best = emptySheet();
   if (imageLike || (!pdfLike && !textLike)) {
     best = preferRead(best, await readAsImage(uri, who));
-    if (best.medications.length) return best;
+    if (best.medications.length || best.followUps.length || best.clinic.vetPhone) return best;
   }
   if (pdfLike || (!imageLike && !textLike)) {
     best = preferRead(best, await readAsPdf(uri, path, who));
-    if (best.medications.length) return best;
+    if (best.medications.length || best.followUps.length || best.clinic.vetPhone) return best;
   }
   if (textLike) {
     best = preferRead(best, await readAsText(uri, who));
@@ -151,7 +167,7 @@ async function readAsPdf(uri: string, path: string, who: string): Promise<VisitS
       fileMime: 'application/pdf',
       fileName: extOf(path) ? path.split('/').pop() : 'visit.pdf',
     });
-    if (ai.ok) return normalizeSheetRead(ai.result, 'ai');
+    if (ai.ok) return fillFromText(normalizeSheetRead(ai.result, 'ai'), scraped);
     if (scraped) {
       const local = localReadSheet(scraped, 'local');
       return { ...local, reason: local.found ? undefined : ai.reason };
@@ -167,7 +183,7 @@ async function readAsText(uri: string, who: string): Promise<VisitSheetResult> {
     const text = await readLocalText(uri);
     if (!text) return emptySheet('model_error');
     const ai = await callAi<ModelSheet>({ kind: 'sheet', dogLine: who, text });
-    if (ai.ok) return normalizeSheetRead(ai.result, 'ai');
+    if (ai.ok) return fillFromText(normalizeSheetRead(ai.result, 'ai'), text);
     const local = localReadSheet(text, 'local');
     return { ...local, reason: local.found ? undefined : ai.reason };
   } catch {
@@ -180,14 +196,14 @@ export function sheetReadFailNote(reason?: AiReason) {
     case 'premium_required':
       return 'The visit is saved. Reload the app and tap Read if the reader did not run.';
     case 'not_configured':
-      return 'The reader is not configured on the server yet.';
+      return 'The visit is saved. The reader is not talking to the model, so nothing went on the calendar. Tap Read once the server key is set.';
     case 'offline':
-      return 'Need a connection to read the sheet.';
+      return 'The visit is saved. Need a connection to read medications and shots onto the calendar.';
     case 'image_too_large':
-      return 'That file is too large to read. Photograph the medications list.';
+      return 'That file is too large to read. Photograph the medications list and the vaccine dates.';
     case 'model_error':
-      return 'Could not read that page. Medications already on the profile still go on the calendar.';
+      return 'The visit is saved. The reader could not read that page, so nothing new went on the calendar. Tap Read to try again.';
     default:
-      return 'Saved. No medications, follow-ups, or meal times were on that page. Photograph the meds list or the vaccine dates.';
+      return 'Saved. No medications, shots, or clinic details were on that page. Photograph the meds list or the vaccine card, then tap Read.';
   }
 }

@@ -49,14 +49,16 @@ const LOOK_SYSTEM =
   'Urge a vet for pain, breathing, eye injuries, tight belly, or toxins.';
 
 const SHEET_SYSTEM =
-  'Extract medications, feeding times, and follow-up / vaccine dates from a veterinary discharge, vaccine card, or prescription label. You are not a veterinarian. Never invent a drug name or a date. ' +
+  'Extract medications, feeding times, vaccine / follow-up dates, and clinic identity from a veterinary discharge, rabies certificate, vaccine card, or prescription label. You are not a veterinarian. Never invent a drug name, a date, or a phone number. ' +
   'quantity is how much to give (1 tablet, 1/2 tablet, 2 ml). dose is the printed strength (75 mg, 100 mg/ml). ' +
   'times is clock times only when a clock is written. frequency is the written rhythm (twice daily, BID, every 12 hours) even when no clock appears. ' +
   'days is the course length only when written. followUps covers recheck, return, suture removal, and vaccine / booster due dates. ' +
-  'followUps.date is YYYY-MM-DD when a calendar date is written, or a relative phrase such as "in 2 weeks" when that is all that is written. ' +
-  'followUps.kind is vaccine for shots / rabies / DHPP / Bordetella / boosters, otherwise vet. If a field is not written, use null or []. Do not invent a drug or a date. ' +
+  'followUps.date must be a bare YYYY-MM-DD of the next due or expiration. Never wrap words around it. If both a given date and an expiration are printed, use the expiration. ' +
+  'followUps.kind is vaccine for shots / rabies / DHPP / Bordetella / boosters, otherwise vet. Include Rabies, DHPP, and Bordetella whenever those names are on the page. ' +
+  'clinic.vetName is the hospital or clinic name. clinic.vetPhone is a phone number printed on the page. clinic.microchip is the chip number if printed. ' +
+  'If a field is not written, use null or []. Do not invent a drug, a date, or a phone number. ' +
   'Put every written drug, preventative, and prescription into medications, even if no clock time is printed. ' +
-  'JSON only: {"medications":[{"name","quantity":null,"dose":null,"times":[],"frequency":null,"withFood":false,"days":null,"note":null}],"meals":[{"time":"HH:MM","label":"Breakfast","days":null}],"followUps":[{"title","date":null,"time":null,"kind":"vet","note":null}]}';
+  'JSON only: {"medications":[{"name","quantity":null,"dose":null,"times":[],"frequency":null,"withFood":false,"days":null,"note":null}],"meals":[{"time":"HH:MM","label":"Breakfast","days":null}],"followUps":[{"title","date":null,"time":null,"kind":"vet","note":null}],"clinic":{"vetName":null,"vetPhone":null,"microchip":null}}';
 
 function emptyLook(seen: string) {
   return {
@@ -78,11 +80,12 @@ function isPdf(body: SheetBody) {
 
 function sheetHasDrugs(raw: Record<string, unknown> | null) {
   if (!raw) return false;
-  for (const key of ['medications', 'meds', 'prescriptions', 'drugs', 'rx']) {
+  for (const key of ['medications', 'meds', 'prescriptions', 'drugs', 'rx', 'followUps', 'follow_ups', 'vaccines', 'shots']) {
     const v = raw[key];
     if (Array.isArray(v) && v.length > 0) return true;
   }
-  return false;
+  const clinic = raw.clinic && typeof raw.clinic === 'object' ? (raw.clinic as Record<string, unknown>) : null;
+  return Boolean(clinic?.vetPhone || clinic?.vetName || clinic?.microchip || raw.phone || raw.vetPhone);
 }
 
 function decodeB64(b64: string) {
@@ -140,6 +143,7 @@ async function askModel(system: string, content: unknown[], temperature: number)
       ],
     }),
   });
+  if (res.status === 401) throw new Error('openai_401');
   if (!res.ok) throw new Error(`openai_${res.status}`);
   const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
   const raw = data.choices?.[0]?.message?.content?.trim();
@@ -195,7 +199,10 @@ Deno.serve(async (req) => {
       );
       const hasDog = gate.hasDog === true;
       const seen = typeof gate.seen === 'string' ? gate.seen : '';
-      if (!hasDog) return json({ ok: true, source: 'ai', result: emptyLook(seen) });
+      if (!hasDog) {
+        if (chargedLook) await admin.rpc('refund_ai_use', { p_user: uid, p_kind: 'look' });
+        return json({ ok: true, source: 'ai', result: emptyLook(seen) });
+      }
 
       const result = await askModel(
         LOOK_SYSTEM,
@@ -211,7 +218,10 @@ Deno.serve(async (req) => {
       return json({ ok: true, source: 'ai', result: { ...result, hasDog: true, seen: seen || result.seen } });
     }
 
-    const ask = `Read this clinic discharge, prescription, or vaccine card for ${body.dogLine}. Extract every medication that is written: name, give quantity, strength, frequency, clock times, and days. Also extract every follow-up, recheck, and vaccine due date.`;
+    const { data: sheetUsed } = await admin.rpc('consume_ai_use', { p_user: uid, p_kind: 'sheet', p_cap: 20 });
+    if (sheetUsed === -1) return json({ ok: false, source: 'local', reason: 'quota' }, 429);
+
+    const ask = `Read this clinic discharge, rabies certificate, prescription, or vaccine card for ${body.dogLine}. Extract every medication that is written: name, give quantity, strength, frequency, clock times, and days. Extract every follow-up, recheck, and vaccine due or expiration date, especially rabies, DHPP, and Bordetella. Extract the clinic or hospital name, any phone number, and a microchip if printed.`;
     const pdfText = body.fileBase64 && isPdf(body) ? await pdfToText(body.fileBase64) : '';
     const text = [body.text, pdfText].filter(Boolean).join('\n\n');
     let last: Record<string, unknown> | null = null;
@@ -245,6 +255,8 @@ Deno.serve(async (req) => {
       await admin.rpc('refund_ai_use', { p_user: uid, p_kind: 'look' });
     }
     console.error('ai failed', body.kind, e);
+    const message = e instanceof Error ? e.message : '';
+    if (message === 'openai_401' || !OPENAI_KEY) return json({ ok: false, source: 'local', reason: 'not_configured' });
     return json({ ok: false, source: 'local', reason: 'model_error' }, 502);
   }
 });

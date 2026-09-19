@@ -7,15 +7,17 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { Button } from '@/components/ui/Button';
 import { Field } from '@/components/ui/Field';
-import { Icon, type IconName } from '@/components/ui/Icon';
+import { Icon } from '@/components/ui/Icon';
 import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { CareSeatCard } from '@/components/care/CareSeatCard';
 import { HouseRoster } from '@/components/today/HouseRoster';
 import { SheetReadReview } from '@/components/care/SheetReadReview';
+import { ShotRecord } from '@/components/care/ShotRecord';
 import { applySheetRead } from '@/lib/applySheetRead';
-import type { SheetRead } from '@/engine/sheetMeds';
+import { isShotTitle, type SheetRead } from '@/engine/sheetMeds';
 import { requestNotifications } from '@/lib/notify';
 import { useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
@@ -32,16 +34,9 @@ import type { VaultPhoto } from '@/lib/vault';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
-const ROLES: { icon: IconName; title: string; sees: string }[] = [
-  { icon: 'person', title: 'Partner or family', sees: 'Everything, including the health timeline' },
-  { icon: 'walk', title: 'Dog walker', sees: 'Walking rules, triggers, harness, emergency contacts' },
-  { icon: 'clock', title: 'Sitter or daycare', sees: 'Feeding, meds, routine, do-not list, vet' },
-  { icon: 'vet', title: 'Vet', sees: 'Records, weight trend, symptom history' },
-];
-
 /**
- * The dog is cared for by more than one person. This tab is the single sheet they all work from.
- * V1 ships the sheet as text you can send anywhere; role-based live links come in a later phase.
+ * The dog is cared for by more than one person. The sheet is the handoff.
+ * Care Seat puts a name and a clock on this phone so doses say who gave them.
  */
 export default function CareTeam() {
   const t = useTheme();
@@ -70,21 +65,14 @@ export default function CareTeam() {
 
   const sheet = dog ? buildHandoffSheet(dog, user?.email, weightUnit) : '';
 
-  const landRead = async (read: SheetRead) => {
+  const landRead = (read: SheetRead) => {
     if (!dog) return;
-    setDraft(read);
-    try {
-      await requestNotifications();
-      const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
-      await refresh();
-      setReadNote(summary);
-      Alert.alert('On the calendar', summary, [
-        { text: 'Stay here' },
-        { text: 'Open calendar', onPress: () => router.push('/(app)/calendar') },
-      ]);
-    } catch {
-      setReadNote('Check the list, then save to put it on the calendar.');
+    if (read.found) {
+      setDraft(read);
+      setReadNote('Check medications and upcoming shots, then save to put them on the calendar.');
+      return;
     }
+    setReadNote('Nothing to put on the calendar yet. Photograph the meds list or the vaccine card and tap Read.');
   };
 
   const share = async () => {
@@ -114,7 +102,7 @@ export default function CareTeam() {
           setReadNote(sheetReadFailNote(read.reason));
           return;
         }
-        await landRead(read);
+        landRead(read);
       } catch (e) {
         setError(humanizeError(e, 'Could not save that visit.'));
       } finally {
@@ -144,7 +132,7 @@ export default function CareTeam() {
           setReadNote(sheetReadFailNote(read.reason));
           return;
         }
-        await landRead(read);
+        landRead(read);
       } catch (e) {
         setError(humanizeError(e, 'Could not read that visit.'));
       } finally {
@@ -165,12 +153,12 @@ export default function CareTeam() {
         await refresh();
         setDraft(null);
         setReadNote(summary);
-        Alert.alert('On the calendar', summary, [
+        Alert.alert('Saved', summary, [
           { text: 'Stay here' },
           { text: 'Open calendar', onPress: () => router.push('/(app)/calendar') },
         ]);
       } catch (e) {
-        setError(humanizeError(e, 'Could not save those medications.'));
+        setError(humanizeError(e, 'Could not save those details.'));
       } finally {
         setConfirming(false);
       }
@@ -200,6 +188,18 @@ export default function CareTeam() {
           { icon: 'clock', label: 'Due', value: overdue.length ? `${overdue.length} late` : 'Clear', tone: overdue.length ? 'bad' : 'good' },
         ]}
       />
+
+      {dog ? (
+        <ShotRecord
+          notes={dog.notes}
+          today={reminders.today}
+          extras={reminders.all
+            .filter((r) => (r.kind === 'vaccine' || isShotTitle(r.title)) && !r.completedAt)
+            .map((r) => ({ title: r.title, date: r.date }))}
+          onEdit={() => router.push('/(app)/care-sheet-edit')}
+          onOpenDate={() => router.push('/(app)/calendar')}
+        />
+      ) : null}
 
       {cards.length ? (
         <Section title="Cards and visits">
@@ -242,7 +242,7 @@ export default function CareTeam() {
       <Section title="Vet visits">
         <Surface kind="grouped" style={{ gap: space.md }}>
           <Text variant="caption" tone="secondary">
-            Upload a photo or files (PDF, text, visit summary, vaccine card). We read the medications and put the doses on the calendar.
+            Upload a photo or files (PDF, text, visit summary, vaccine card). We read medications and upcoming shots such as rabies, then you save them onto the calendar.
           </Text>
           <Field label="What was this visit" placeholder="Annual, vaccines, teeth" value={title} onChangeText={setTitle} />
           <View style={styles.actions}>
@@ -251,7 +251,7 @@ export default function CareTeam() {
           </View>
           {reading ? (
             <Text variant="caption" tone="secondary">
-              Reading the sheet for medications and meal times.
+              Reading the sheet for shots, clinic details, and medications.
             </Text>
           ) : null}
           {draft ? (
@@ -305,26 +305,7 @@ export default function CareTeam() {
       </Section>
 
 
-      <Section title="Who sees what">
-        <Surface kind="grouped" padding={0} style={{ overflow: 'hidden' }}>
-          {ROLES.map((r, i) => (
-            <View key={r.title} style={[styles.role, i < ROLES.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.border }]}>
-              <View style={[styles.roleIcon, { backgroundColor: t.surfaceStrong }]}>
-                <Icon name={r.icon} size={16} color={t.brand} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text variant="bodyStrong">{r.title}</Text>
-                <Text variant="caption" tone="secondary">
-                  {r.sees}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </Surface>
-        <Text variant="caption" tone="tertiary">
-          Send the sheet to whoever has {dog?.name ?? 'your dog'} today. It is built from the profile, so it is always current.
-        </Text>
-      </Section>
+      <CareSeatCard dog={dog} ownerEmail={user?.email} weightUnit={weightUnit} />
     </Screen>
   );
 }

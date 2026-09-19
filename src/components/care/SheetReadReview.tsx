@@ -4,11 +4,12 @@ import { Platform, StyleSheet, Switch, View } from 'react-native';
 
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { DateField } from '@/components/ui/DateField';
 import { Field } from '@/components/ui/Field';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { type SheetFollowUp, type SheetMeal, type SheetMed, type SheetRead } from '@/engine/sheetMeds';
+import { clinicHasFacts, type SheetClinic, type SheetFollowUp, type SheetMeal, type SheetMed, type SheetRead } from '@/engine/sheetMeds';
 import { clockNow, nextClockSlot, prettyTime } from '@/lib/reminders';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -29,12 +30,14 @@ type Props = {
 export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirming }: Props) {
   const t = useTheme();
 
-  const found = (medications: SheetMed[], meals: SheetMeal[], followUps: SheetFollowUp[]) =>
-    medications.length > 0 || meals.length > 0 || followUps.length > 0;
+  const found = (medications: SheetMed[], meals: SheetMeal[], followUps: SheetFollowUp[], clinic: SheetClinic) =>
+    medications.length > 0 || meals.length > 0 || followUps.length > 0 || clinicHasFacts(clinic);
   const follows = read.followUps ?? [];
-  const setMeds = (medications: SheetMed[]) => onChange({ ...read, medications, found: found(medications, read.meals, follows) });
-  const setMeals = (meals: SheetMeal[]) => onChange({ ...read, meals, found: found(read.medications, meals, follows) });
-  const setFollows = (followUps: SheetFollowUp[]) => onChange({ ...read, followUps, found: found(read.medications, read.meals, followUps) });
+  const clinic = read.clinic ?? { vetName: null, vetPhone: null, microchip: null };
+  const setClinic = (next: SheetClinic) => onChange({ ...read, clinic: next, found: found(read.medications, read.meals, follows, next) });
+  const setMeds = (medications: SheetMed[]) => onChange({ ...read, medications, found: found(medications, read.meals, follows, clinic) });
+  const setMeals = (meals: SheetMeal[]) => onChange({ ...read, meals, found: found(read.medications, meals, follows, clinic) });
+  const setFollows = (followUps: SheetFollowUp[]) => onChange({ ...read, followUps, found: found(read.medications, read.meals, followUps, clinic) });
   const patchFollow = (i: number, patch: Partial<SheetFollowUp>) => setFollows(follows.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
 
   const patchMed = (i: number, patch: Partial<SheetMed>) => setMeds(read.medications.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
@@ -45,9 +48,25 @@ export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirmi
       <View style={{ gap: space.xs }}>
         <Text variant="headline">Check before we save</Text>
         <Text variant="caption" tone="secondary">
-          Doses and follow-up dates are already on the calendar if the read found them. Edit here and save again to replace that set.
+          Nothing is written to the profile or calendar until you save. Check the shot dates and clinic details first.
         </Text>
       </View>
+
+      {clinicHasFacts(clinic) || follows.some((f) => f.kind === 'vaccine') ? (
+        <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <Text variant="bodyStrong">Clinic on this visit</Text>
+          <Field label="Clinic" value={clinic.vetName ?? ''} onChangeText={(vetName) => setClinic({ ...clinic, vetName: vetName.trim() || null })} placeholder="Hospital or vet name" />
+          <Field
+            label="Phone"
+            value={clinic.vetPhone ?? ''}
+            onChangeText={(vetPhone) => setClinic({ ...clinic, vetPhone: vetPhone.trim() || null })}
+            placeholder="(555) 123-4567"
+            keyboardType="phone-pad"
+            autoComplete="tel"
+          />
+          <Field label="Microchip" value={clinic.microchip ?? ''} onChangeText={(microchip) => setClinic({ ...clinic, microchip: microchip.trim() || null })} placeholder="If it is on the card" />
+        </View>
+      ) : null}
 
       {read.medications.map((med, i) => (
         <View key={`${med.name}-${i}`} style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
@@ -56,7 +75,7 @@ export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirmi
           <Field label="Strength" value={med.dose ?? ''} onChangeText={(dose) => patchMed(i, { dose: dose.trim() || null })} placeholder="75 mg" />
           <TimesRow
             times={med.times}
-            emptyHint={med.note ?? 'No clock time was on the sheet. Add one to remind.'}
+            emptyHint={med.note ?? 'No clock on the sheet. Save uses a morning reminder until you add one.'}
             onAdd={(time) => patchMed(i, { times: med.times.includes(time) ? med.times : [...med.times, time].slice(0, 4) })}
             onRemove={(time) => patchMed(i, { times: med.times.filter((x) => x !== time) })}
           />
@@ -76,7 +95,7 @@ export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirmi
       {follows.map((follow, i) => (
         <View key={`${follow.title}-${follow.date}-${i}`} style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
           <Field label={follow.kind === 'vaccine' ? 'Shot' : 'Follow-up'} value={follow.title} onChangeText={(title) => patchFollow(i, { title })} />
-          <Field label="Date" value={follow.date} onChangeText={(date) => patchFollow(i, { date })} placeholder="2026-10-12" />
+          <DateField label="Date" value={follow.date} onChange={(date) => patchFollow(i, { date })} placeholder="Choose the due date" />
           <TimesRow
             times={[follow.time]}
             emptyHint="Add a time for this visit."

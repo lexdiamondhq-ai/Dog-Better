@@ -57,13 +57,28 @@ type RawFollow = {
   note?: string | null;
 };
 
+export type SheetClinic = {
+  vetName: string | null;
+  vetPhone: string | null;
+  microchip: string | null;
+};
+
 export type SheetRead = {
   medications: SheetMed[];
   meals: SheetMeal[];
   followUps: SheetFollowUp[];
+  clinic: SheetClinic;
   found: boolean;
   source: 'ai' | 'local';
 };
+
+export function emptyClinic(): SheetClinic {
+  return { vetName: null, vetPhone: null, microchip: null };
+}
+
+export function clinicHasFacts(clinic?: SheetClinic | null) {
+  return Boolean(clinic?.vetName || clinic?.vetPhone || clinic?.microchip);
+}
 
 const MAX_DAYS = 14;
 const MAX_TIMES = 4;
@@ -98,7 +113,7 @@ export function normalizeSheetRead(raw: unknown, source: SheetRead['source']): S
   const followUps = firstArray<RawFollow>(o, ['followUps', 'follow_ups', 'followups', 'vaccines', 'shots'])
     .map((f) => {
       const title = (f.title ?? f.name ?? '').trim();
-      const date = parseFollowUpDate(f.date ?? f.when);
+      const date = parseFollowUpDate(f.date ?? f.when) ?? parseFollowUpDate(asString(f.note));
       const kind: SheetFollowUp['kind'] = f.kind === 'vaccine' || isShotTitle(title) ? 'vaccine' : 'vet';
       return {
         title,
@@ -109,7 +124,15 @@ export function normalizeSheetRead(raw: unknown, source: SheetRead['source']): S
       };
     })
     .filter((f) => f.title.length > 1 && f.date);
-  return { medications, meals, followUps, found: medications.length > 0 || meals.length > 0 || followUps.length > 0, source };
+  const clinic = clinicFromRaw(o);
+  return {
+    medications,
+    meals,
+    followUps,
+    clinic,
+    found: medications.length > 0 || meals.length > 0 || followUps.length > 0 || clinicHasFacts(clinic),
+    source,
+  };
 }
 
 function firstArray<T>(o: Record<string, unknown>, keys: string[]): T[] {
@@ -143,13 +166,25 @@ export function mergeSheetReads(reads: SheetRead[]): SheetRead {
       medications.push(med);
     }
     meals.push(...read.meals);
-    followUps.push(...(read.followUps ?? []));
+    for (const follow of read.followUps ?? []) {
+      const key = followKey(follow);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      followUps.push(follow);
+    }
+  }
+  const clinic = emptyClinic();
+  for (const read of reads) {
+    if (!clinic.vetName && read.clinic?.vetName) clinic.vetName = read.clinic.vetName;
+    if (!clinic.vetPhone && read.clinic?.vetPhone) clinic.vetPhone = read.clinic.vetPhone;
+    if (!clinic.microchip && read.clinic?.microchip) clinic.microchip = read.clinic.microchip;
   }
   return {
     medications,
     meals,
     followUps,
-    found: medications.length > 0 || meals.length > 0 || followUps.length > 0,
+    clinic,
+    found: medications.length > 0 || meals.length > 0 || followUps.length > 0 || clinicHasFacts(clinic),
     source: reads.some((r) => r.source === 'ai') ? 'ai' : 'local',
   };
 }
@@ -157,6 +192,43 @@ export function mergeSheetReads(reads: SheetRead[]): SheetRead {
 function clean(s: string | null | undefined) {
   const t = s?.trim();
   return t ? t : null;
+}
+
+function asString(v: unknown) {
+  return typeof v === 'string' ? v : v == null ? null : String(v);
+}
+
+export function normalizePhone(raw: string | null | undefined) {
+  const s = raw?.trim() ?? '';
+  if (!s) return null;
+  const digits = s.replace(/\D/g, '');
+  const ten = digits.length === 11 && digits.startsWith('1') ? digits.slice(1) : digits;
+  if (ten.length === 10) return `(${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+  return s.length >= 7 ? s : null;
+}
+
+function cleanChip(raw: string | null | undefined) {
+  const digits = (raw ?? '').replace(/\D/g, '');
+  if (digits.length < 9 || digits.length > 15) return null;
+  if (digits.length === 10 || digits.length === 11) return null;
+  return digits;
+}
+
+function cleanClinicName(raw: string | null | undefined) {
+  const t = clean(raw);
+  if (!t || t.length > 80) return null;
+  if (/certificate|vaccination|license|county|state of|expires|microchip/i.test(t) && !/hospital|clinic|veterinary|animal/i.test(t)) return null;
+  return t;
+}
+
+function clinicFromRaw(o: Record<string, unknown>): SheetClinic {
+  const nested = o.clinic && typeof o.clinic === 'object' ? (o.clinic as Record<string, unknown>) : {};
+  const vetName = cleanClinicName(
+    asString(nested.vetName ?? nested.vet_name ?? nested.clinicName ?? nested.hospital ?? nested.clinic ?? o.vetName ?? o.vet_name ?? o.clinicName),
+  );
+  const vetPhone = normalizePhone(asString(nested.vetPhone ?? nested.vet_phone ?? nested.phone ?? nested.telephone ?? o.vetPhone ?? o.phone));
+  const microchip = cleanChip(asString(nested.microchip ?? nested.chip ?? o.microchip));
+  return { vetName, vetPhone, microchip };
 }
 
 /** Missing or non-positive days stay null. Do not default to a week. */
@@ -228,7 +300,7 @@ export function localReadSheet(text: string, source: SheetRead['source'] = 'loca
   const dinnerTime = dinner ? normalizeTime(dinner[1]) : '';
   if (breakfastTime) meals.push({ time: breakfastTime, label: 'Breakfast', days: null });
   if (dinnerTime) meals.push({ time: dinnerTime, label: 'Dinner', days: null });
-  return normalizeSheetRead({ medications, meals, followUps: followUpsFromText(text) }, source);
+  return normalizeSheetRead({ medications, meals, followUps: shotsFromCertText(text), clinic: clinicFromText(text) }, source);
 }
 
 const MONTH: Record<string, number> = {
@@ -262,12 +334,35 @@ export function isShotTitle(title: string) {
   return /shot|rabies|dhpp|dhpp|bordetella|lepto|lyme|influenza|parvo|distemper|vaccine|vax|booster/i.test(title);
 }
 
-export function parseFollowUpDate(raw: string | null | undefined, now = new Date()): string | null {
-  if (!raw) return null;
-  const s = raw.trim();
+function followKey(follow: SheetFollowUp) {
+  const title = follow.title.toLowerCase();
+  if (follow.kind === 'vaccine' || isShotTitle(follow.title)) {
+    if (/rabies/.test(title)) return 'follow:vax:rabies';
+    if (/dhpp|distemper/.test(title)) return 'follow:vax:dhpp';
+    if (/bordetella|kennel/.test(title)) return 'follow:vax:bordetella';
+    return `follow:vax:${title}`;
+  }
+  return `follow:vet:${title}:${follow.date}`;
+}
+
+function parseDateToken(raw: string, now: Date): string | null {
+  const s = raw.trim().replace(/[.,;]+$/g, '');
+  if (!s) return null;
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const d = new Date(`${s}T12:00:00`);
     return Number.isNaN(d.getTime()) ? null : s;
+  }
+  const monthYearNum = s.match(/^(\d{1,2})[\/\-](\d{4})$/);
+  if (monthYearNum) {
+    const month = parseInt(monthYearNum[1], 10) - 1;
+    if (month < 0 || month > 11) return null;
+    return ymd(new Date(parseInt(monthYearNum[2], 10), month, 1));
+  }
+  const yearMonth = s.match(/^(\d{4})[\/\-](\d{1,2})$/);
+  if (yearMonth) {
+    const month = parseInt(yearMonth[2], 10) - 1;
+    if (month < 0 || month > 11) return null;
+    return ymd(new Date(parseInt(yearMonth[1], 10), month, 1));
   }
   const mdY = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (mdY) {
@@ -276,18 +371,19 @@ export function parseFollowUpDate(raw: string | null | undefined, now = new Date
     const d = new Date(y, parseInt(mdY[1], 10) - 1, parseInt(mdY[2], 10));
     return Number.isNaN(d.getTime()) ? null : ymd(d);
   }
-  const inN = s.match(/in\s+(\d+)\s+(day|days|week|weeks|month|months)/i);
+  const inN = s.match(/in\s+(\d+)\s+(day|days|week|weeks|month|months|year|years)/i);
   if (inN) {
     const n = parseInt(inN[1], 10);
     const d = new Date(now);
     const u = inN[2].toLowerCase();
     if (u.startsWith('day')) d.setDate(d.getDate() + n);
     else if (u.startsWith('week')) d.setDate(d.getDate() + n * 7);
+    else if (u.startsWith('year')) d.setFullYear(d.getFullYear() + n);
     else d.setMonth(d.getMonth() + n);
     return ymd(d);
   }
   const named = s.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/i,
+    /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?$/i,
   );
   if (named) {
     const month = MONTH[named[1].toLowerCase()];
@@ -299,7 +395,7 @@ export function parseFollowUpDate(raw: string | null | undefined, now = new Date
     return Number.isNaN(d.getTime()) ? null : ymd(d);
   }
   const monthYear = s.match(
-    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})\b/i,
+    /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{4})$/i,
   );
   if (monthYear) {
     const month = MONTH[monthYear[1].toLowerCase()];
@@ -307,6 +403,36 @@ export function parseFollowUpDate(raw: string | null | undefined, now = new Date
     return ymd(new Date(parseInt(monthYear[2], 10), month, 1));
   }
   return null;
+}
+
+function firstLooseDate(blob: string, now: Date) {
+  const iso = blob.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  if (iso) return parseDateToken(iso[1], now);
+  const mdY = blob.match(/\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b/);
+  if (mdY) return parseDateToken(mdY[1], now);
+  const named = blob.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?\b/i,
+  );
+  if (named) return parseDateToken(named[0], now);
+  const monthYear = blob.match(
+    /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{4}\b/i,
+  );
+  if (monthYear) return parseDateToken(monthYear[0], now);
+  const my = blob.match(/\b(\d{1,2}[/-]\d{4})\b/);
+  if (my) return parseDateToken(my[1], now);
+  return null;
+}
+
+export function parseFollowUpDate(raw: string | null | undefined, now = new Date()): string | null {
+  if (!raw) return null;
+  const s = raw.trim();
+  if (!s) return null;
+  const expire = s.match(/(?:expir(?:es|ed|ation|y)|next due|due(?: date)?|valid(?: through| until)?)[:\s-]+([A-Za-z0-9,./\- ]{4,40})/i);
+  if (expire) {
+    const hit = parseDateToken(expire[1], now) ?? firstLooseDate(expire[1], now);
+    if (hit) return hit;
+  }
+  return parseDateToken(s, now) ?? firstLooseDate(s, now);
 }
 
 function followUpsFromText(text: string): RawFollow[] {
@@ -323,6 +449,66 @@ function followUpsFromText(text: string): RawFollow[] {
     });
   }
   return out;
+}
+
+function firstDateIn(blob: string) {
+  return parseFollowUpDate(blob);
+}
+
+function dateForShot(label: RegExp, text: string) {
+  if (!label.test(text)) return null;
+  const idx = text.search(label);
+  const near = idx >= 0 ? firstDateIn(text.slice(Math.max(0, idx - 40), idx + 220)) : null;
+  if (near) return near;
+  if (/rabies/i.test(label.source)) return firstDateIn(text);
+  return null;
+}
+
+/** Rabies cards print the shot name on one line and the expiration on another. */
+function shotsFromCertText(text: string): RawFollow[] {
+  const out = followUpsFromText(text);
+  const add = (title: string, date: string | null) => {
+    if (!date || out.some((f) => (f.title ?? '').toLowerCase().includes(title.toLowerCase()))) return;
+    out.push({ title, date, kind: 'vaccine' });
+  };
+  add('Rabies', dateForShot(/rabies/i, text));
+  add('DHPP', dateForShot(/dhpp|distemper/i, text));
+  add('Bordetella', dateForShot(/bordetella|kennel cough/i, text));
+  add('Lepto', dateForShot(/\blepto/i, text));
+  add('Lyme', dateForShot(/\blyme\b/i, text));
+  return out;
+}
+
+function clinicFromText(text: string): SheetClinic {
+  const phoneMatch = text.match(/(?:phone|tel|telephone|office)[:\s]*([+()0-9.\-\s]{10,22})/i) ?? text.match(/(\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4})/);
+  const chipMatch = text.match(/microchip[:\s#]*([0-9 ]{9,20})/i);
+  const hospital = text.match(/([A-Z][A-Za-z0-9'&. -]{2,50}(?:Animal Hospital|Veterinary(?: Hospital| Clinic)?|Animal Clinic|Pet Hospital))/i);
+  const vetPerson = text.match(/(?:veterinarian|vaccinated by|signed by)[:\s]+(?:Dr\.?\s*)?([A-Z][A-Za-z.' -]{2,40})/i);
+  return {
+    vetName: cleanClinicName(hospital?.[1] ?? (vetPerson?.[1] ? `Dr. ${vetPerson[1]}` : null)),
+    vetPhone: normalizePhone(phoneMatch?.[1] ?? phoneMatch?.[0]),
+    microchip: cleanChip(chipMatch?.[1]),
+  };
+}
+
+export function hasProfileOffer(read: SheetRead) {
+  const shots = (read.followUps ?? []).some((f) => f.kind === 'vaccine' || isShotTitle(f.title));
+  return shots || clinicHasFacts(read.clinic);
+}
+
+export function profileOfferMessage(dogName: string, read: SheetRead) {
+  const clinic = read.clinic ?? emptyClinic();
+  const bits: string[] = [];
+  for (const f of read.followUps ?? []) {
+    if (f.kind === 'vaccine' || isShotTitle(f.title)) bits.push(`${f.title} ${f.date}`);
+  }
+  if (clinic.vetName) bits.push(clinic.vetName);
+  if (clinic.vetPhone) bits.push(clinic.vetPhone);
+  if (clinic.microchip) bits.push(`microchip ${clinic.microchip}`);
+  const listed = bits.join(', ');
+  return listed
+    ? `This visit has ${listed}. Add the shot dates and clinic details to ${dogName}'s profile? You can edit them first.`
+    : `Add the shot dates and clinic details to ${dogName}'s profile? You can edit them first.`;
 }
 
 function clocksOnLine(line: string) {
@@ -379,19 +565,20 @@ function daysFromLine(line: string) {
 
 /** Rebuild a sheet read from the medications block already saved on the dog. */
 export function sheetReadFromNotes(notes: string | null): SheetRead {
-  if (!notes?.includes(MEDS_START)) return { medications: [], meals: [], followUps: [], found: false, source: 'local' };
+  if (!notes?.includes(MEDS_START)) return { medications: [], meals: [], followUps: [], clinic: emptyClinic(), found: false, source: 'local' };
   const chunk = notes.split(MEDS_START)[1]?.split(MEDS_END)[0] ?? '';
   const medications = chunk
     .split('\n')
     .map((line) => line.replace(/^- /, '').trim())
     .filter(Boolean)
     .map((line) => {
-      const [head, tail] = line.split(' · ').map((s) => s.trim());
-      const blob = tail ?? '';
+      const parts = line.split(' · ').map((s) => s.trim());
+      const head = parts[0] ?? '';
+      const blob = parts.slice(1).join(' · ');
       const times = uniqueTimes(blob.match(/\b\d{1,2}:\d{2}\b/g) ?? undefined);
       const daysMatch = blob.match(/(\d+)\s+days?/i);
-      const dose = head?.match(/(\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b)/i)?.[1] ?? null;
-      const name = (head ?? '').replace(/\s+\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b.*$/i, '').trim() || (head ?? '');
+      const dose = head.match(/(\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b)/i)?.[1] ?? null;
+      const name = head.replace(/\s+\d+(?:\.\d+)?\s*(?:mg|mcg|ml|iu)\b.*$/i, '').trim() || head;
       return {
         name,
         dose,
@@ -407,7 +594,7 @@ export function sheetReadFromNotes(notes: string | null): SheetRead {
 }
 
 export function sheetShotsFromNotes(notes: string | null): SheetRead {
-  if (!notes?.includes(SHOTS_START)) return { medications: [], meals: [], followUps: [], found: false, source: 'local' };
+  if (!notes?.includes(SHOTS_START)) return { medications: [], meals: [], followUps: [], clinic: emptyClinic(), found: false, source: 'local' };
   const chunk = notes.split(SHOTS_START)[1]?.split(SHOTS_END)[0] ?? '';
   const followUps = chunk
     .split('\n')
@@ -448,19 +635,40 @@ function escapeReg(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function medCalendarTitle(med: SheetMed) {
+export function medGiveLine(med: SheetMed) {
   const qty = med.quantity && med.quantity !== med.dose ? med.quantity : null;
   const dose = med.dose && med.dose !== med.quantity ? med.dose : null;
+  return [qty, dose].filter(Boolean).join(' · ') || null;
+}
+
+export function medWhenLine(med: SheetMed) {
+  return med.times.length ? med.times.map((t) => prettyTime(t)).join(' and ') : null;
+}
+
+export function medCalendarTitle(med: SheetMed) {
+  const give = medGiveLine(med);
   const food = med.withFood ? ' with food' : '';
-  return [med.name, qty, dose].filter(Boolean).join(' · ') + food;
+  return [med.name, give].filter(Boolean).join(' · ') + food;
 }
 
 function courseDays(med: SheetMed) {
   return med.days ?? (med.times.length ? DEFAULT_COURSE_DAYS : null);
 }
 
+/** A named drug on the sheet is enough to remind. Morning is the stand-in until a clock is written. */
+export function prepareSheetMed(med: SheetMed): SheetMed {
+  const times = med.times.length ? med.times : ['08:00'];
+  return {
+    ...med,
+    times,
+    days: med.days ?? DEFAULT_COURSE_DAYS,
+    note: med.note ?? (med.times.length ? null : 'No clock on the sheet. Morning reminder until you change it.'),
+  };
+}
+
 function canScheduleMed(med: SheetMed) {
-  return med.times.length > 0 && courseDays(med) != null;
+  const ready = prepareSheetMed(med);
+  return ready.times.length > 0 && courseDays(ready) != null;
 }
 
 function canScheduleMeal(meal: SheetMeal) {
@@ -469,32 +677,48 @@ function canScheduleMeal(meal: SheetMeal) {
 
 export function remindersFromSheet(dogId: string, read: SheetRead): Omit<Reminder, 'id'>[] {
   const start = new Date();
-  const out: Omit<Reminder, 'id'>[] = [];
+  const follows: Omit<Reminder, 'id'>[] = [];
+  for (const follow of read.followUps ?? []) {
+    if (!follow.title.trim() || !follow.date) continue;
+    follows.push({
+      dogId,
+      kind: follow.kind === 'vaccine' || isShotTitle(follow.title) ? 'vaccine' : 'vet',
+      title: follow.title,
+      time: follow.time || '09:00',
+      date: follow.date,
+      notes: `sheet:${follow.note ?? 'from visit'}`,
+    });
+  }
+
+  const doses: Omit<Reminder, 'id'>[] = [];
   for (const med of read.medications) {
-    const days = courseDays(med);
-    if (!canScheduleMed(med) || days == null) continue;
+    const ready = prepareSheetMed(med);
+    const days = courseDays(ready);
+    if (!canScheduleMed(ready) || days == null) continue;
     for (let d = 0; d < days; d++) {
       const day = new Date(start);
       day.setDate(start.getDate() + d);
       const date = ymd(day);
-      for (const time of med.times) {
-        out.push({
+      for (const time of ready.times) {
+        doses.push({
           dogId,
           kind: 'medication',
-          title: medCalendarTitle(med),
+          title: medCalendarTitle(ready),
           time,
           date,
-          notes: `sheet:${med.note ?? 'from visit'}`,
+          notes: `sheet:${ready.note ?? 'from visit'}`,
         });
       }
     }
   }
+
+  const meals: Omit<Reminder, 'id'>[] = [];
   for (const meal of read.meals) {
     if (!canScheduleMeal(meal) || meal.days == null) continue;
     for (let d = 0; d < meal.days; d++) {
       const day = new Date(start);
       day.setDate(start.getDate() + d);
-      out.push({
+      meals.push({
         dogId,
         kind: 'meal',
         title: meal.label,
@@ -504,17 +728,8 @@ export function remindersFromSheet(dogId: string, read: SheetRead): Omit<Reminde
       });
     }
   }
-  for (const follow of read.followUps ?? []) {
-    out.push({
-      dogId,
-      kind: follow.kind,
-      title: follow.title,
-      time: follow.time,
-      date: follow.date,
-      notes: `sheet:${follow.note ?? 'from visit'}`,
-    });
-  }
-  return out.slice(0, 80);
+
+  return [...follows, ...doses, ...meals].slice(0, 240);
 }
 
 export function medsLineFromNotes(notes: string | null) {
@@ -529,8 +744,9 @@ export function medsLineFromNotes(notes: string | null) {
 }
 
 export function sheetReadSummary(read: SheetRead) {
-  if (!read.found) return 'No medications, follow-ups, or meal times were on that sheet.';
+  if (!read.found) return 'No medications, shots, clinic details, or meal times were on that sheet.';
   const plan = read.medications
+    .map(prepareSheetMed)
     .filter(canScheduleMed)
     .map((m) => {
       const days = courseDays(m);
@@ -539,11 +755,15 @@ export function sheetReadSummary(read: SheetRead) {
     });
   const meals = read.meals.map((m) => `${m.label} ${m.time}`).join(', ');
   const shots = (read.followUps ?? []).map((f) => `${f.title} on ${f.date}`).join(', ');
+  const clinic = [read.clinic?.vetName, read.clinic?.vetPhone, read.clinic?.microchip ? `microchip ${read.clinic.microchip}` : null]
+    .filter(Boolean)
+    .join(', ');
   const listedOnly = read.medications.filter((m) => !canScheduleMed(m)).map((m) => m.name);
   const scheduled = plan.length > 0 || (read.followUps ?? []).length > 0;
   return [
     plan.length ? `On the calendar: ${plan.join('. ')}.` : '',
-    shots && `Upcoming: ${shots}.`,
+    shots && `Shots: ${shots}.`,
+    clinic && `Clinic: ${clinic}.`,
     meals && `Meals: ${meals}.`,
     !scheduled && read.medications.length ? 'No reminders yet. Add a time and how many days first.' : '',
     listedOnly.length ? `Still need a time or course length: ${listedOnly.join(', ')}.` : '',

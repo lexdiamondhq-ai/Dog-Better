@@ -1,6 +1,6 @@
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Linking, Platform, Share, StyleSheet, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
@@ -17,14 +17,14 @@ import { useDogs } from '@/lib/dogs';
 import { usePreferences } from '@/lib/preferences';
 import { formatWeight } from '@/lib/units';
 import { useTheme } from '@/theme/ThemeProvider';
-import { radius, space } from '@/theme/tokens';
+import { space } from '@/theme/tokens';
 
 const RED_FLAGS = SYMPTOMS.filter((s) => s.redFlag);
 
 /**
- * Emergency mode exists to remove panic, not to replace a vet. It starts a clock, gets the
- * critical facts on one screen, and puts the call and the directions one tap away. The intake
- * summary is what the owner reads out (or pastes) at the clinic instead of trying to remember.
+ * Emergency mode exists to remove panic, not to replace a vet. Critical facts sit on one
+ * screen, with the call and the directions one tap away. The intake summary is what the
+ * owner reads out (or pastes) at the clinic instead of trying to remember.
  */
 export default function Emergency() {
   const t = useTheme();
@@ -33,19 +33,8 @@ export default function Emergency() {
   const a = useDogActivity(dog);
   const { weightUnit } = usePreferences();
   const [startedAt] = useState(() => new Date());
-  const [elapsed, setElapsed] = useState('0:00');
   const [signs, setSigns] = useState<SymptomId[]>([]);
   const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    const tick = () => {
-      const s = Math.floor((Date.now() - startedAt.getTime()) / 1000);
-      setElapsed(`${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [startedAt]);
 
   const since = startedAt.getTime();
   const recentMeals = a.meals.filter((m) => since - new Date(m.logged_at).getTime() < 24 * 3600_000);
@@ -88,7 +77,7 @@ export default function Emergency() {
           <Button label="Nearest emergency vet" icon="location" kind={dog?.vet_phone ? 'secondary' : 'danger'} size="lg" onPress={findVet} style={{ flex: 1 }} />
         </View>
       }>
-      <ScreenHeader voice="clinical" eyebrow="Emergency" title="Something is wrong" onBack={() => router.back()} large={false} trailing={<Clock elapsed={elapsed} />} />
+      <ScreenHeader voice="clinical" eyebrow="Emergency" title="Something is wrong" onBack={() => router.back()} large={false} />
 
       <Animated.View entering={FadeInUp.delay(40).duration(260)}>
         <Surface kind="raised" style={[styles.banner, { borderColor: t.bad, borderWidth: 1.5 }]}>
@@ -150,18 +139,6 @@ export default function Emergency() {
   );
 }
 
-function Clock({ elapsed }: { elapsed: string }) {
-  const t = useTheme();
-  return (
-    <View style={[styles.clock, { backgroundColor: t.bad }]}>
-      <Icon name="clock" size={14} color="#FFFFFF" />
-      <Text variant="label" style={{ color: '#FFFFFF', fontVariant: ['tabular-nums'] }}>
-        {elapsed}
-      </Text>
-    </View>
-  );
-}
-
 function Fact({ label, value, last }: { label: string; value: string; last?: boolean }) {
   const t = useTheme();
   return (
@@ -182,6 +159,5 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   row: { flexDirection: 'row', gap: space.sm },
   photoRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  clock: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: space.md, height: 32, borderRadius: radius.pill, marginTop: 4 },
   fact: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
 });
