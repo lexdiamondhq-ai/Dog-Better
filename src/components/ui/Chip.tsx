@@ -31,12 +31,12 @@ export function Chip({ label, selected, onPress, icon, tone = 'neutral', size = 
   const bg = selected ? fill : soft;
   const fg = selected ? onFill : softFg;
   const border = selected ? fill : tone === 'neutral' ? t.border : 'transparent';
-  const height = size === 'sm' ? control.sm - 4 : control.md;
+  const height = size === 'sm' ? control.sm : control.md;
 
   const inner = (
     <View style={[styles.chip, { height, backgroundColor: bg, borderColor: border, paddingHorizontal: size === 'sm' ? space.sm + 2 : space.md + 2 }]}>
-      {icon ? <Icon name={icon} size={size === 'sm' ? 12 : 14} color={fg} /> : null}
-      <Text variant={size === 'sm' ? 'micro' : 'label'} numberOfLines={1} style={{ color: fg }}>
+      {icon ? <Icon name={icon} size={size === 'sm' ? 14 : 16} color={fg} /> : null}
+      <Text variant="label" numberOfLines={1} style={{ color: fg }}>
         {label}
       </Text>
     </View>

@@ -4,9 +4,10 @@ import { StyleSheet, View } from 'react-native';
 
 import { AdSlot } from '@/components/ads/AdSlot';
 import { LookOrb } from '@/components/look/LookOrb';
-import { TreatPocket } from '@/components/points/TreatPocket';
+import { GaitCard } from '@/components/track/GaitCard';
 import { WalkCard } from '@/components/track/WalkCard';
 import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Field } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
 import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
@@ -19,7 +20,6 @@ import { usePoints } from '@/lib/points';
 import { humanize, relativeTime, useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
-import { useWalksToday } from '@/lib/duty';
 import { usePreferences } from '@/lib/preferences';
 import { humanizeError } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
@@ -35,7 +35,6 @@ export default function Track() {
   const { dog, refresh } = useDogs();
   const { award } = usePoints();
   const a = useDogActivity(dog);
-  const walksToday = useWalksToday(dog?.id);
   const { weightUnit } = usePreferences();
   const reminders = useReminders(dog?.id);
   const nextEvent = reminders.upcoming[0];
@@ -87,8 +86,6 @@ export default function Track() {
     <Screen dock refreshing={a.refreshing} onRefresh={a.refresh}>
       <ScreenHeader title="Track" subtitle={`${dog?.name ?? 'Your dog'} · walks, food, weight, health`} />
 
-      <TreatPocket mealKinds={a.mealsToday.map((m) => m.kind)} walksToday={walksToday} hasWeight={!!dog?.weight_kg} />
-
       {dog ? (
         <Tap onPress={() => router.push('/(app)/calendar')} haptic="selection" style={[styles.cal, { backgroundColor: t.bgRaised, borderColor: t.border }]} accessibilityLabel="Open calendar">
           <View style={[styles.calIcon, { backgroundColor: nextEvent ? reminderColor(nextEvent) : t.surface }]}>
@@ -110,7 +107,8 @@ export default function Track() {
 
       {dog && user ? (
         <Section title="Walks">
-          <WalkCard dogId={dog.id} ownerId={user.id} dogName={dog.name} />
+          {a.loading ? <Skeleton height={160} /> : <WalkCard dogId={dog.id} ownerId={user.id} dogName={dog.name} />}
+          <GaitCard dogId={dog.id} dogName={dog.name} />
         </Section>
       ) : null}
 
@@ -162,7 +160,7 @@ export default function Track() {
             <View style={{ flex: 1 }}>
               <Text variant="title">{weightLabel ?? 'No weight yet'}</Text>
               <Text variant="caption" tone="secondary">
-                {trend ?? (a.weights[0] ? `Logged ${relativeTime(a.weights[0].recorded_at)}` : 'Monthly is enough')}
+                {trend ?? (a.weights[0] ? `Logged ${relativeTime(a.weights[0].recorded_at)}` : 'Log two weights to see the trend. Monthly is enough.')}
               </Text>
             </View>
           </View>
@@ -191,7 +189,13 @@ export default function Track() {
               ) : null}
             </View>
           ) : null}
-          {a.weights.length > 1 ? <Sparkline values={a.weights.map((w) => Number(w.weight_kg)).reverse()} /> : null}
+          {a.weights.length > 1 ? (
+            <Sparkline values={a.weights.map((w) => Number(w.weight_kg)).reverse()} />
+          ) : (
+            <Text variant="caption" tone="secondary">
+              A second weigh-in unlocks the trend. Same scale, same time of day.
+            </Text>
+          )}
         </Surface>
       </Section>
 
@@ -267,7 +271,7 @@ function Sparkline({ values }: { values: number[] }) {
 
 const styles = StyleSheet.create({
   cal: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.md, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
-  calIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  calIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   calDot: { width: 10, height: 10, borderRadius: 5 },
   statRow: { flexDirection: 'row', gap: space.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },

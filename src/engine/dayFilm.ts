@@ -1,7 +1,7 @@
 import type { Href } from 'expo-router';
 
 import type { IconName } from '@/components/ui/Icon';
-import type { HealthLog, Meal, WeightEntry } from '@/lib/database.types';
+import type { Meal, WeightEntry } from '@/lib/database.types';
 
 export type FilmFrame = {
   id: string;
@@ -16,12 +16,18 @@ export function buildDayFilm(input: {
   mealsToday: Meal[];
   walksToday: number;
   walkMinutes: number;
-  healthToday: HealthLog[];
   weightToday: WeightEntry | null;
-  lookOverToday: boolean;
+  weightLabel?: string | null;
+  now?: Date;
+  medsDueToday?: number;
+  medsLoggedToday?: number;
 }): FilmFrame[] {
   const kinds = new Set(input.mealsToday.map((m) => m.kind));
-  const health = input.healthToday[0];
+  const now = input.now ?? new Date();
+  const weekday = now.toLocaleDateString(undefined, { weekday: 'short' });
+  const monthDay = now.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const due = input.medsDueToday ?? 0;
+  const logged = input.medsLoggedToday ?? 0;
   return [
     {
       id: 'breakfast',
@@ -48,19 +54,19 @@ export function buildDayFilm(input: {
       href: '/(app)/(tabs)/today',
     },
     {
-      id: 'look',
-      label: 'Look-over',
-      detail: input.lookOverToday ? 'Done' : health ? ({ green: 'Quiet', amber: 'Watch', red: 'Urgent' }[health.triage] ?? health.triage) : 'Open',
-      icon: 'care',
-      tone: input.lookOverToday || health?.triage === 'green' ? 'good' : health?.triage === 'amber' ? 'warn' : health?.triage === 'red' ? 'bad' : 'empty',
-      href: '/(app)/look-over',
+      id: 'date',
+      label: weekday,
+      detail: monthDay,
+      icon: 'calendar',
+      tone: due > 0 ? 'warn' : logged > 0 ? 'good' : 'empty',
+      href: '/(app)/calendar',
     },
     {
       id: 'weight',
       label: 'Weight',
-      detail: input.weightToday ? 'Logged' : 'Add',
+      detail: input.weightLabel ?? (input.weightToday ? 'Logged' : 'Add'),
       icon: 'weight',
-      tone: input.weightToday ? 'good' : 'empty',
+      tone: input.weightToday || input.weightLabel ? 'good' : 'empty',
       href: '/(app)/(tabs)/track',
     },
   ];

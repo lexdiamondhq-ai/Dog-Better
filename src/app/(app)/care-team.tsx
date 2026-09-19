@@ -20,14 +20,15 @@ import { requestNotifications } from '@/lib/notify';
 import { useDogActivity } from '@/lib/activity';
 import { useAuth } from '@/lib/auth';
 import { useDogs } from '@/lib/dogs';
-import { useEntitlements } from '@/lib/entitlements';
 import { humanizeError } from '@/lib/errors';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
-import { readVisitSheet } from '@/lib/readVisitSheet';
+import { readVisitSheet, readVisitSheets, sheetReadFailNote } from '@/lib/readVisitSheet';
 import { rosterMedLabel, useReminders } from '@/lib/reminders';
+import { useSyncNotesMeds } from '@/lib/syncNotesMeds';
 import { isImagePath } from '@/lib/media';
-import { askVetVisitSource, uploadVetVisit, useVetVisits, type VisitSource } from '@/lib/visits';
+import { askVetVisitSource, materializeVisitForRead, uploadVetVisit, useVetVisits, type VisitSource } from '@/lib/visits';
+import type { VaultPhoto } from '@/lib/vault';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
@@ -47,10 +48,10 @@ export default function CareTeam() {
   const router = useRouter();
   const { user } = useAuth();
   const { dog, refresh } = useDogs();
-  const { isPremium } = useEntitlements();
   const { weightUnit } = usePreferences();
   const visits = useVetVisits(dog?.id);
   const reminders = useReminders(dog?.id);
+  useSyncNotesMeds(dog);
   const activity = useDogActivity(dog);
   const meals = activity.mealsToday.filter((m) => m.kind === 'breakfast' || m.kind === 'dinner').length;
   const overdue = reminders.dueToday.filter((r) => {
@@ -68,6 +69,23 @@ export default function CareTeam() {
   const [error, setError] = useState<string | null>(null);
 
   const sheet = dog ? buildHandoffSheet(dog, user?.email, weightUnit) : '';
+
+  const landRead = async (read: SheetRead) => {
+    if (!dog) return;
+    setDraft(read);
+    try {
+      await requestNotifications();
+      const summary = await applySheetRead({ dog, read, replaceSheetReminders: reminders.replaceSheetReminders });
+      await refresh();
+      setReadNote(summary);
+      Alert.alert('On the calendar', summary, [
+        { text: 'Stay here' },
+        { text: 'Open calendar', onPress: () => router.push('/(app)/calendar') },
+      ]);
+    } catch {
+      setReadNote('Check the list, then save to put it on the calendar.');
+    }
+  };
 
   const share = async () => {
     if (!dog) return;
@@ -87,30 +105,16 @@ export default function CareTeam() {
       setError(null);
       try {
         const saved = await uploadVetVisit({ dogId: dog.id, userId: user.id, title, from });
-        if (!saved) return;
-        const today = new Date();
-        const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-        reminders.add({
-          dogId: dog.id,
-          kind: 'vet',
-          title: saved.caption,
-          time: `${String(today.getHours()).padStart(2, '0')}:${String(today.getMinutes()).padStart(2, '0')}`,
-          date,
-        });
+        if (!saved?.length) return;
         setTitle('');
         await visits.reload();
-        if (!isPremium) {
-          setReadNote('Saved on the profile. Premium reads the sheet for meds and dose reminders.');
-          return;
-        }
         setReading(true);
-        const read = await readVisitSheet({ uri: saved.localUri, path: saved.storage_path, dog });
+        const read = await readVisitSheets(saved.map((row) => ({ uri: row.localUri, path: row.storage_path, mime: row.mime })), dog);
         if (!read.found) {
-          setReadNote('Saved. No medications or meal times were on that page. Photograph the meds list if this was a PDF.');
+          setReadNote(sheetReadFailNote(read.reason));
           return;
         }
-        setDraft(read);
-        setReadNote('Check the times and days before anything is written to the profile or the calendar.');
+        await landRead(read);
       } catch (e) {
         setError(humanizeError(e, 'Could not save that visit.'));
       } finally {
@@ -127,6 +131,29 @@ export default function CareTeam() {
 
   const uploadFile = () => runUpload('file');
 
+  const readExisting = (visit: VaultPhoto) => {
+    if (!dog) return;
+    void (async () => {
+      setBusy(true);
+      setReading(true);
+      setError(null);
+      try {
+        const local = await materializeVisitForRead(visit);
+        const read = await readVisitSheet({ uri: local.uri, path: local.path, mime: local.mime, dog });
+        if (!read.found) {
+          setReadNote(sheetReadFailNote(read.reason));
+          return;
+        }
+        await landRead(read);
+      } catch (e) {
+        setError(humanizeError(e, 'Could not read that visit.'));
+      } finally {
+        setBusy(false);
+        setReading(false);
+      }
+    })();
+  };
+
   const confirmRead = () => {
     if (!dog || !draft) return;
     void (async () => {
@@ -138,7 +165,10 @@ export default function CareTeam() {
         await refresh();
         setDraft(null);
         setReadNote(summary);
-        Alert.alert('On the profile', summary);
+        Alert.alert('On the calendar', summary, [
+          { text: 'Stay here' },
+          { text: 'Open calendar', onPress: () => router.push('/(app)/calendar') },
+        ]);
       } catch (e) {
         setError(humanizeError(e, 'Could not save those medications.'));
       } finally {
@@ -150,6 +180,7 @@ export default function CareTeam() {
   return (
     <Screen>
       <ScreenHeader
+        voice="clinical"
         title={dog ? `${dog.name}'s people` : 'Care team'}
         subtitle={dog ? 'Whoever has them should never have to guess.' : undefined}
         onBack={() => router.back()}
@@ -211,10 +242,7 @@ export default function CareTeam() {
       <Section title="Vet visits">
         <Surface kind="grouped" style={{ gap: space.md }}>
           <Text variant="caption" tone="secondary">
-            Upload a photo or a text file (visit summary, vaccine card). It lands on {dog?.name ?? 'this dog'}&apos;s profile.
-            {isPremium
-              ? ' Premium reads the page for medications. You check the times, then we write them on the profile and set reminders.'
-              : ' Reading the sheet for meds is Premium.'}
+            Upload a photo or files (PDF, text, visit summary, vaccine card). We read the medications and put the doses on the calendar.
           </Text>
           <Field label="What was this visit" placeholder="Annual, vaccines, teeth" value={title} onChangeText={setTitle} />
           <View style={styles.actions}>
@@ -226,7 +254,6 @@ export default function CareTeam() {
               Reading the sheet for medications and meal times.
             </Text>
           ) : null}
-          {!isPremium ? <Button label="Unlock sheet reading with Premium" icon="sparkle" kind="ghost" onPress={() => router.push({ pathname: '/paywall', params: { from: 'sheet-meds' } })} /> : null}
           {draft ? (
             <SheetReadReview read={draft} onChange={setDraft} onConfirm={confirmRead} onDiscard={() => setDraft(null)} confirming={confirming} />
           ) : null}
@@ -243,8 +270,8 @@ export default function CareTeam() {
           {visits.visits.length ? (
             <View style={styles.visits}>
               {visits.visits.map((v) => (
-                <Tap key={v.id} onPress={() => router.push({ pathname: '/(app)/photo/[id]', params: { id: v.id } })} haptic="selection">
-                  <View style={styles.visit}>
+                <View key={v.id} style={styles.visit}>
+                  <Tap onPress={() => router.push({ pathname: '/(app)/photo/[id]', params: { id: v.id } })} haptic="selection" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.md }}>
                     {isImagePath(v.storage_path) ? (
                       <Image source={{ uri: v.url }} style={styles.visitImg} contentFit="cover" />
                     ) : (
@@ -260,9 +287,13 @@ export default function CareTeam() {
                         {new Date(v.created_at).toLocaleDateString()}
                       </Text>
                     </View>
-                    <Icon name="chevron" size={14} color={t.textTertiary} />
-                  </View>
-                </Tap>
+                  </Tap>
+                  <Tap onPress={() => readExisting(v)} haptic="medium" disabled={busy} accessibilityLabel="Read medications from this visit">
+                    <Text variant="label" tone="brand">
+                      Read
+                    </Text>
+                  </Tap>
+                </View>
               ))}
             </View>
           ) : (
@@ -299,7 +330,7 @@ export default function CareTeam() {
 }
 
 const styles = StyleSheet.create({
-  editBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  editBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   sheetHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   sheetIcon: { width: 46, height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   preview: { padding: space.md, borderRadius: radius.sm },

@@ -25,6 +25,7 @@ import { radius, space } from '@/theme/tokens';
 
 export function PackFlip({ seed, onDone }: { seed: string; onDone: (correct: number, total: number) => void }) {
   const t = useTheme();
+  const { reduceMotion } = t;
   const [hand] = useState(() => dealPack(seed));
   const [i, setI] = useState(0);
   const [ask, setAsk] = useState(false);
@@ -36,6 +37,10 @@ export function PackFlip({ seed, onDone }: { seed: string; onDone: (correct: num
   const bob = useSharedValue(0);
 
   useEffect(() => {
+    if (reduceMotion) {
+      bob.value = 0;
+      return;
+    }
     bob.value = withRepeat(
       withSequence(
         withTiming(-4, { duration: 1400, easing: Easing.inOut(Easing.sin) }),
@@ -44,11 +49,11 @@ export function PackFlip({ seed, onDone }: { seed: string; onDone: (correct: num
       -1,
       false,
     );
-  }, [bob, i]);
+  }, [bob, i, reduceMotion]);
 
   useEffect(() => {
-    flip.value = withTiming(ask ? 180 : 0, { duration: 620, easing: Easing.bezier(0.2, 0.75, 0.2, 1) });
-  }, [ask, flip]);
+    flip.value = withTiming(ask ? 180 : 0, { duration: reduceMotion ? 0 : 620, easing: Easing.bezier(0.2, 0.75, 0.2, 1) });
+  }, [ask, flip, reduceMotion]);
 
   const frontStyle = useAnimatedStyle(() => ({
     transform: [{ perspective: 1400 }, { rotateY: `${interpolate(flip.value, [0, 180], [0, 180])}deg` }, { translateY: bob.value }],

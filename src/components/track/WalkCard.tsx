@@ -4,13 +4,16 @@ import { StyleSheet, View } from 'react-native';
 import MapView, { Polyline } from 'react-native-maps';
 
 import { EarnBadge } from '@/components/points/EarnBadge';
+import { HeatGuard } from '@/components/track/HeatGuard';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Text } from '@/components/ui/Text';
 import { relativeTime } from '@/lib/activity';
 import type { Walk } from '@/lib/database.types';
+import { usePavement } from '@/lib/duty';
 import { humanizeError } from '@/lib/errors';
+import { stopCountFromPath } from '@/engine/gaitWatch';
 import { REWARDS } from '@/engine/rewards';
 import { usePoints } from '@/lib/points';
 import { usePreferences } from '@/lib/preferences';
@@ -45,10 +48,15 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [mapReady, setMapReady] = useState(false);
+  const [heatGate, setHeatGate] = useState(false);
+  const [queuedPlace, setQueuedPlace] = useState<string | undefined>(undefined);
+  const heat = usePavement();
 
   const startLive = live.start;
   const begin = useCallback(
     async (placeName?: string) => {
+      setHeatGate(false);
+      setQueuedPlace(undefined);
       setError(null);
       try {
         await startLive({ placeName });
@@ -59,6 +67,18 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
     [startLive],
   );
 
+  const requestStart = useCallback(
+    (placeName?: string) => {
+      if (heat && heat.verdict !== 'safe') {
+        setQueuedPlace(placeName);
+        setHeatGate(true);
+        return;
+      }
+      void begin(placeName);
+    },
+    [begin, heat],
+  );
+
   const loadRecent = useCallback(() => fetchRecentWalks(dogId, 5).then(setRecent), [dogId]);
   useEffect(() => {
     loadRecent();
@@ -67,15 +87,15 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
   useFocusEffect(
     useCallback(() => {
       const queued = takeWalkStart();
-      if (queued) void begin(queued.placeName);
-    }, [begin]),
+      if (queued) requestStart(queued.placeName);
+    }, [requestStart]),
   );
 
   useEffect(() => {
     return watchWalkStart((queued) => {
-      void begin(queued.placeName);
+      requestStart(queued.placeName);
     });
-  }, [begin]);
+  }, [requestStart]);
 
   useEffect(() => {
     if (!live.walk) return;
@@ -108,6 +128,8 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
         endedAt: new Date(),
         steps: w.steps,
         notes: w.placeName ?? null,
+        metres: Math.round(pathMetres(w.path)),
+        stopCount: stopCountFromPath(w.path),
       });
       await award({ kind: 'walk', key: `walk:${saved.id}`, dogId });
       await Promise.all([loadRecent(), today.reload()]);
@@ -204,7 +226,11 @@ export function WalkCard({ dogId, ownerId, dogName }: Props) {
         <Button label={`Finish walk  +${REWARDS.walk.points}`} icon="check" onPress={finish} loading={saving} />
       ) : today.available === false ? null : (
         <View style={{ gap: space.sm }}>
-          <Button label="Start a walk" icon="walk" kind="secondary" onPress={() => void begin()} />
+          {heatGate && heat ? (
+            <HeatGuard heat={heat} dogName={dogName} onStart={() => void begin(queuedPlace)} onWait={() => setHeatGate(false)} />
+          ) : (
+            <Button label="Start a walk" icon="walk" kind="secondary" onPress={() => requestStart()} />
+          )}
           <EarnBadge points={REWARDS.walk.points} />
         </View>
       )}

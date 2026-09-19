@@ -48,7 +48,7 @@ export function WhenPickers({ date, time, today, onDate, onTime }: Props) {
         style={[styles.row, { backgroundColor: on ? t.surface : t.bgRaised, borderColor: on ? t.brand : t.border }]}
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${shown}. Double tap to change.`}>
-        <Text variant="caption" tone="tertiary">
+        <Text variant="caption" tone="secondary">
           {label}
         </Text>
         <Text variant="headline">{shown}</Text>

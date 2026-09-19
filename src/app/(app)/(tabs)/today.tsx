@@ -3,14 +3,14 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Dimensions, Share, StyleSheet, View } from 'react-native';
+import { Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 
 import { DogSwitcher } from '@/components/dogs/DogSwitcher';
 import { LookOrb } from '@/components/look/LookOrb';
 import { TreatPocket } from '@/components/points/TreatPocket';
 import { DayFilm } from '@/components/today/DayFilm';
-import { TonightCard } from '@/components/today/TonightCard';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { DogAvatar } from '@/components/ui/DogAvatar';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { IconWell } from '@/components/ui/IconWell';
@@ -24,31 +24,36 @@ import { useDogs } from '@/lib/dogs';
 import { useInbox } from '@/lib/inbox';
 import { usePoints } from '@/lib/points';
 import { buildDayFilm } from '@/engine/dayFilm';
+import { JAR_POCKET } from '@/engine/rewards';
 import { walkGoalMinutes } from '@/engine/walkGoal';
+import { formatWeight } from '@/lib/units';
 import { pickDuty, useHeatF, useWalksToday } from '@/lib/duty';
 import { buildHandoffSheet } from '@/lib/handoff';
 import { usePreferences } from '@/lib/preferences';
-import { useReminders } from '@/lib/reminders';
+import { useSyncNotesMeds } from '@/lib/syncNotesMeds';
+import { isOpen, useReminders } from '@/lib/reminders';
 import { humanizeError } from '@/lib/errors';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
-const PORTRAIT_H = Math.round(Math.min(Dimensions.get('window').height * 0.52, 520));
-
 export default function Today() {
   const t = useTheme();
+  const { height: windowH } = useWindowDimensions();
+  const portraitH = Math.round(Math.min(windowH * 0.52, 520));
   const router = useRouter();
   const { user } = useAuth();
   const { dog } = useDogs();
   const activity = useDogActivity(dog);
   const inbox = useInbox();
-  const { award, revoke, todayCounts } = usePoints();
+  const { award, revoke } = usePoints();
   const bellCount = inbox.unread;
   const { weightUnit } = usePreferences();
   const reminders = useReminders(dog?.id);
+  useSyncNotesMeds(dog);
   const heatF = useHeatF();
-  const walksToday = useWalksToday(dog?.id);
+  const walks = useWalksToday(dog?.id);
+  const walksToday = walks.count;
   const [logging, setLogging] = useState<string | null>(null);
   const [mealError, setMealError] = useState<string | null>(null);
   const [switcher, setSwitcher] = useState(false);
@@ -64,26 +69,26 @@ export default function Today() {
     d.setHours(0, 0, 0, 0);
     return d;
   }, [activity.fetchedAt]);
-  const healthToday = useMemo(
-    () => activity.health.filter((h) => new Date(h.created_at) >= dayStart),
-    [activity.health, dayStart],
-  );
-  const lookOverToday = healthToday.some((h) => h.symptoms.includes('weekly_look'));
   const weightToday = activity.weights.find((w) => new Date(w.recorded_at) >= dayStart) ?? null;
+  const weightLabel = formatWeight(dog?.weight_kg, weightUnit);
   const walkGoal = walkGoalMinutes(dog?.breed, heatF);
+  const medsToday = reminders.onDay(reminders.today).filter((r) => r.kind === 'medication');
   const film = useMemo(
     () =>
       buildDayFilm({
         mealsToday: activity.mealsToday,
         walksToday,
         walkMinutes: walkGoal.minutes,
-        healthToday,
         weightToday,
-        lookOverToday,
+        weightLabel,
+        medsDueToday: medsToday.filter(isOpen).length,
+        medsLoggedToday: medsToday.length,
       }),
-    [activity.mealsToday, walksToday, walkGoal.minutes, healthToday, weightToday, lookOverToday],
+    [activity.mealsToday, walksToday, walkGoal.minutes, weightToday, weightLabel, medsToday],
   );
-  const sunday = new Date().getDay() === 0;
+  const jarHolds = film.filter((f) => f.tone !== 'empty').length;
+  const ready = !activity.loading && reminders.loaded && !walks.loading;
+  const firstRun = ready && !activity.mealsToday.length && walksToday === 0 && !reminders.count;
 
   const logMeal = async (kind: 'breakfast' | 'dinner' | 'treat') => {
     if (!dog || !user) return;
@@ -123,7 +128,7 @@ export default function Today() {
   return (
     <View style={{ flex: 1 }}>
     <Screen dock flushTop padded={false} refreshing={activity.refreshing} onRefresh={activity.refresh}>
-      <Animated.View entering={FadeIn.duration(400)} style={[styles.portrait, { height: PORTRAIT_H }]}>
+      <Animated.View entering={t.reduceMotion ? undefined : FadeIn.duration(400)} style={[styles.portrait, { height: portraitH }]}>
         {sky ? (
           <Image source={{ uri: sky }} style={StyleSheet.absoluteFill} contentFit="cover" transition={280} />
         ) : (
@@ -134,7 +139,7 @@ export default function Today() {
 
         <View style={styles.portraitBody} pointerEvents="box-none">
           <Text variant="body" style={styles.planLine} numberOfLines={2}>
-            {duty.line}
+            {ready ? duty.line : 'Checking what happened today.'}
           </Text>
           <Tap onPress={onPrimary} haptic="medium" style={[styles.primary, { backgroundColor: t.bgRaised }]} accessibilityRole="button" accessibilityLabel={duty.label}>
             <Icon name={duty.icon} size={18} color={t.brand} />
@@ -147,9 +152,14 @@ export default function Today() {
 
       <View style={styles.below}>
         <View style={styles.nameRow}>
-          <Text variant="title" style={{ flex: 1 }} numberOfLines={1}>
-            {dog?.name ?? 'Your dog'}
-          </Text>
+          <View style={{ flex: 1 }}>
+            <Text variant="title" numberOfLines={1}>
+              {dog?.name ?? 'Your dog'}
+            </Text>
+            <Text variant="caption" tone="secondary">
+              {weightLabel ?? 'Add a weight on the care sheet'}
+            </Text>
+          </View>
           <View style={styles.chrome} pointerEvents="box-none">
             <Tap onPress={() => setSwitcher(true)} haptic="selection" style={styles.slot} accessibilityLabel="Switch dog profile">
               <DogAvatar uri={dog?.avatar_url} size={28} ring={false} />
@@ -170,44 +180,42 @@ export default function Today() {
           </View>
         </View>
 
-        <TreatPocket
-          mealKinds={activity.mealsToday.map((m) => m.kind)}
-          walksToday={walksToday}
-          hasWeight={!!dog?.weight_kg}
-          onMeal={(kind) => void logMeal(kind)}
-          slots={film.map((f) => f.tone !== 'empty')}
-        />
+        {ready ? (
+          <TreatPocket
+            mealKinds={activity.mealsToday.map((m) => m.kind)}
+            walksToday={walksToday}
+            hasWeight={!!dog?.weight_kg}
+            onMeal={(kind) => void logMeal(kind)}
+            slots={Array.from({ length: JAR_POCKET }, (_, i) => i < jarHolds)}
+          />
+        ) : (
+          <Skeleton height={56} />
+        )}
 
-        <DayFilm
-          frames={film}
-          onMeal={(kind) => {
-            if (logging) return;
-            void logMeal(kind);
-          }}
-        />
+        {ready ? (
+          <DayFilm
+            frames={film}
+            onMeal={(kind) => {
+              if (logging) return;
+              void logMeal(kind);
+            }}
+          />
+        ) : (
+          <View style={{ flexDirection: 'row', gap: space.xs }}>
+            {Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} height={76} style={{ flex: 1 }} />
+            ))}
+          </View>
+        )}
+        {firstRun ? (
+          <Text variant="caption" tone="secondary">
+            Tap breakfast when they eat. Start a walk when you go out. The film fills left to right.
+          </Text>
+        ) : null}
         {mealError ? (
           <Text variant="caption" tone="bad">
             {mealError}
           </Text>
-        ) : null}
-
-        <TonightCard done={(todayCounts.tip ?? 0) > 0} />
-
-        {sunday && !lookOverToday ? (
-          <Tap
-            onPress={() => router.push('/(app)/look-over')}
-            haptic="medium"
-            style={[styles.emergency, { backgroundColor: t.bgRaised, borderColor: t.border }]}
-            accessibilityLabel="Open the five-spot look-over">
-            <Icon name="care" size={20} color={t.brand} />
-            <View style={{ flex: 1 }}>
-              <Text variant="bodyStrong">Sunday look-over</Text>
-              <Text variant="caption" tone="secondary">
-                Eyes, ears, paws, coat, energy. One minute.
-              </Text>
-            </View>
-            <Icon name="chevron" size={14} color={t.textTertiary} />
-          </Tap>
         ) : null}
 
         {dog ? (
@@ -240,15 +248,17 @@ export default function Today() {
 
         <Tap
           onPress={() => router.push('/(app)/emergency')}
+          onLongPress={() => router.push('/(app)/lost')}
+          delayLongPress={380}
           haptic="heavy"
           style={[styles.emergency, { backgroundColor: t.bgRaised, borderColor: t.bad }]}
           accessibilityRole="button"
-          accessibilityLabel="Open emergency mode">
+          accessibilityLabel="Open emergency mode. Long press for the lost dog packet.">
           <Icon name="emergency" size={20} color={t.bad} />
           <View style={{ flex: 1 }}>
             <Text variant="bodyStrong">Emergency</Text>
             <Text variant="caption" tone="secondary">
-              Clock, vet facts, call, and directions
+              Vet facts, call, and directions
             </Text>
           </View>
           <Icon name="chevron" size={14} color={t.textTertiary} />
@@ -294,10 +304,10 @@ const styles = StyleSheet.create({
   skyMascot: { position: 'absolute', top: 88, alignSelf: 'center', width: 220, height: 168, opacity: 0.88 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   chrome: { flexDirection: 'row', alignItems: 'center' },
-  slot: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  slot: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   care: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: space.md, paddingRight: space.sm, paddingVertical: space.sm, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   careMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm },
-  careSend: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  careSend: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   emergency: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.md, paddingVertical: space.md, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
   badge: { position: 'absolute', top: 2, right: 2, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
   portraitBody: { alignItems: 'center', paddingHorizontal: space.xl, paddingBottom: space.lg, gap: space.sm, zIndex: 2 },

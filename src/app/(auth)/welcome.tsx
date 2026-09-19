@@ -171,7 +171,7 @@ function GoogleMark() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, paddingHorizontal: space.xl, overflow: 'visible' },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   glow: { position: 'absolute', top: -140, left: 0, right: 0, height: 280 },
   glowInner: { flex: 1 },
   pawLeft: { position: 'absolute', left: -80, bottom: 200, transform: [{ rotate: '-14deg' }] },

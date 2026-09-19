@@ -16,7 +16,7 @@ export function HouseRoster({ dots }: { dots: Dot[] }) {
         return (
           <View key={d.label} style={[styles.cell, i > 0 && { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: t.border }]}>
             <Icon name={d.icon} size={14} color={color} />
-            <Text variant="micro" tone="tertiary">
+            <Text variant="caption" tone="secondary">
               {d.label}
             </Text>
             <Text variant="label" numberOfLines={1} style={{ color }}>

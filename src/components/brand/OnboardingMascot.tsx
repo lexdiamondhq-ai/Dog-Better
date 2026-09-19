@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { useEffect, useState } from 'react';
-import { Dimensions, StyleSheet, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, {
   cancelAnimation,
   Easing,
@@ -17,6 +17,7 @@ import Animated, {
 import { CartoonWalk } from '@/components/brand/CartoonWalk';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { useTheme } from '@/theme/ThemeProvider';
 import { fonts, palette } from '@/theme/tokens';
 
 export type MascotPose = 'walk' | 'bark' | 'sit' | 'down';
@@ -38,7 +39,6 @@ const POSES: Record<MascotPose, number> = {
 export const WALK_IN_MS = 2200;
 const CROSSFADE_MS = 280;
 const AFTER_WALK = ['sit', 'bark', 'down'] as const;
-const START_X = -(Math.max(Dimensions.get('window').width, 400) + 40);
 
 type Props = {
   pose?: MascotPose;
@@ -52,7 +52,10 @@ type Props = {
  * the original sticker poses take over for sit / speak / flop.
  */
 export function OnboardingMascot({ pose: locked, cycle = false, size = 'sm', labeled = false }: Props) {
-  const walkOn = cycle && size === 'lg';
+  const { width: windowW } = useWindowDimensions();
+  const { reduceMotion } = useTheme();
+  const startX = -(Math.max(windowW, 400) + 40);
+  const walkOn = cycle && size === 'lg' && !reduceMotion;
   const [arrived, setArrived] = useState(!walkOn);
   const [index, setIndex] = useState(0);
   const pose = walkOn && !arrived ? 'walk' : cycle ? AFTER_WALK[index % AFTER_WALK.length] : (locked ?? 'sit');
@@ -60,19 +63,19 @@ export function OnboardingMascot({ pose: locked, cycle = false, size = 'sm', lab
   const dim = SIZES[size];
   const walking = pose === 'walk' && walkOn && !arrived;
 
-  const enterX = useSharedValue(walkOn ? START_X : 0);
+  const enterX = useSharedValue(walkOn ? startX : 0);
   const gait = useSharedValue(0);
   const bark = useSharedValue(0);
 
   useEffect(() => {
     if (!walkOn) return;
-    enterX.value = START_X;
+    enterX.value = startX;
     gait.value = 0;
     enterX.value = withTiming(0, { duration: WALK_IN_MS, easing: Easing.bezier(0.22, 0.61, 0.36, 1) });
     gait.value = withTiming(1, { duration: WALK_IN_MS, easing: Easing.linear });
     const id = setTimeout(() => setArrived(true), WALK_IN_MS);
     return () => clearTimeout(id);
-  }, [walkOn, enterX, gait]);
+  }, [walkOn, enterX, gait, startX]);
 
   useEffect(() => {
     if (!cycle || !arrived) return;

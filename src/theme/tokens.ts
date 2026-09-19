@@ -56,7 +56,7 @@ export const themes = {
     borderStrong: 'rgba(74, 42, 23, 0.28)',
     text: palette.espresso,
     textSecondary: 'rgba(30, 18, 12, 0.66)',
-    textTertiary: 'rgba(30, 18, 12, 0.50)',
+    textTertiary: 'rgba(30, 18, 12, 0.62)',
     onBrand: palette.ivory,
     brand: palette.cocoa,
     brandDeep: palette.cocoaDeep,
@@ -99,12 +99,12 @@ export const themes = {
     borderStrong: 'rgba(230, 192, 140, 0.26)',
     text: palette.furLight,
     textSecondary: 'rgba(243, 225, 194, 0.68)',
-    textTertiary: 'rgba(243, 225, 194, 0.48)',
-    onBrand: palette.night,
-    brand: palette.fur,
-    brandDeep: palette.furLight,
-    brandLight: palette.sand,
-    brandSoft: 'rgba(230, 192, 140, 0.12)',
+    textTertiary: 'rgba(243, 225, 194, 0.62)',
+    onBrand: palette.espresso,
+    brand: palette.amber,
+    brandDeep: palette.amberLight,
+    brandLight: palette.fur,
+    brandSoft: 'rgba(240, 163, 25, 0.18)',
     accent: palette.amber,
     accentDeep: palette.amberLight,
     accentSoft: 'rgba(240, 163, 25, 0.18)',
@@ -169,15 +169,18 @@ export const space = {
 export const control = {
   /** Inline tag, count badge. */
   xs: 24,
-  /** Pill chip, small icon well. */
-  sm: 32,
-  /** Standard icon well, avatar chip. */
-  md: 36,
+  /** Pill chip, small icon well. Visual 36, Tap hitSlop brings it to 44. */
+  sm: 36,
+  /** Standard icon well, avatar chip, icon button. Apple 44pt minimum. */
+  md: 44,
   /** Round icon button in a header. */
-  lg: 40,
+  lg: 44,
   /** Primary round action. */
   xl: 48,
 } as const;
+
+/** Default extra press area so 36pt chips still meet 44pt. */
+export const HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 
 export const fonts = {
   display: 'Fredoka_600SemiBold',

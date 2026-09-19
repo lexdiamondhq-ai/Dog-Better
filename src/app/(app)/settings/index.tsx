@@ -196,7 +196,7 @@ export default function Settings() {
                 detail={
                   ent.entitlement.trial
                     ? `Then ${ent.offers[ent.entitlement.plan ?? 'yearly']?.priceString ?? PLANS[ent.entitlement.plan ?? 'yearly'].price} per ${PLANS[ent.entitlement.plan ?? 'yearly'].per}. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Will not renew.'}`
-                    : `Medication reader, clinic pack, every dog, forty Looks a day, full Learn, no partner cards. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Ends at the period end.'}`
+                    : `Clinic pack, every dog, forty Looks a day, full Learn, no partner cards. ${ent.entitlement.willRenew ? 'Renews automatically.' : 'Ends at the period end.'}`
                 }
               />
               <SettingsRow
@@ -213,7 +213,7 @@ export default function Settings() {
               <SettingsRow
                 icon="sparkle"
                 label="Dog Better Premium"
-                detail="Medication reader, clinic pack, every dog, forty Looks a day, full Learn, no partner cards"
+                detail="Clinic pack, every dog, forty Looks a day, full Learn, no partner cards"
                 onPress={() => router.push({ pathname: '/paywall', params: { from: 'settings' } })}
               />
               <SettingsRow icon="refresh" label={busy === 'restore' ? 'Checking the App Store' : 'Restore purchase'} onPress={busy ? undefined : () => void onRestore()} last />
@@ -221,7 +221,7 @@ export default function Settings() {
           )}
         </Surface>
         <Text variant="caption" tone="tertiary">
-          Records, emergency mode, the care sheet, and community are free forever, on every plan.
+          Records, emergency mode, the care sheet, visit meds, the treat scanner, and community are free forever, on every plan.
         </Text>
       </Section>
 
@@ -293,7 +293,7 @@ export default function Settings() {
 const styles = StyleSheet.create({
   dogCard: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   camBadge: { position: 'absolute', right: -2, bottom: -2, width: 26, height: 26, borderRadius: 13, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
-  editBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  editBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   switcher: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   dogChip: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: 6, paddingRight: space.md, height: 38, borderRadius: 999 },
 });

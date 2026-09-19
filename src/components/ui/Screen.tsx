@@ -79,13 +79,16 @@ type HeaderProps = {
   onBack?: () => void;
   trailing?: ReactNode;
   large?: boolean;
+  /** Clinical drops the display face. Use on meds, emergency, clinic, and the care sheet. */
+  voice?: 'playful' | 'clinical';
 };
 
 /** Titles are set in the display face, big and low-tension, and slide up with the content. */
-export function ScreenHeader({ title, eyebrow, subtitle, onBack, trailing, large = true }: HeaderProps) {
+export function ScreenHeader({ title, eyebrow, subtitle, onBack, trailing, large = true, voice = 'playful' }: HeaderProps) {
   const t = useTheme();
+  const clinical = voice === 'clinical';
   return (
-    <Animated.View entering={FadeInDown.duration(260)} style={styles.header}>
+    <Animated.View entering={t.reduceMotion ? undefined : FadeInDown.duration(260)} style={styles.header}>
       {onBack ? (
         <Tap onPress={onBack} haptic="selection" style={[styles.back, { backgroundColor: t.surface }]} accessibilityLabel="Back">
           <Icon name="back" size={18} />
@@ -93,11 +96,11 @@ export function ScreenHeader({ title, eyebrow, subtitle, onBack, trailing, large
       ) : null}
       <View style={styles.headerText}>
         {eyebrow ? (
-          <Text variant="overline" tone="tertiary">
+          <Text variant="overline" tone="secondary">
             {eyebrow}
           </Text>
         ) : null}
-        <Text variant={large ? 'display' : 'title'}>{title}</Text>
+        <Text variant={clinical ? (large ? 'clinical' : 'headline') : large ? 'display' : 'title'}>{title}</Text>
         {subtitle ? (
           <Text variant="body" tone="secondary">
             {subtitle}
@@ -113,7 +116,7 @@ export function Section({ title, action, children }: PropsWithChildren<{ title: 
   return (
     <View style={styles.section}>
       <View style={styles.sectionRow}>
-        <Text variant="overline" tone="tertiary">
+        <Text variant="overline" tone="secondary">
           {title}
         </Text>
         {action}
@@ -127,7 +130,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md, paddingBottom: space.xs },
   headerText: { flex: 1, gap: space.xs },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  back: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   section: { gap: space.sm },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });

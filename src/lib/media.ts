@@ -9,7 +9,7 @@ export type Bucket = 'media' | 'vault';
 
 export type PickedFile = { uri: string; name: string; mime: string };
 
-const IMAGE_EXT = /^(jpe?g|png|gif|webp|heic)$/i;
+const IMAGE_EXT = /^(jpe?g|png|gif|webp|heic|heif|tif|tiff|bmp)$/i;
 const VIDEO_EXT = /^(mp4|mov|m4v|webm)$/i;
 
 export function extOf(path: string) {
@@ -89,15 +89,24 @@ async function localSize(uri: string): Promise<number | null> {
 }
 
 export async function pickVisitFile(): Promise<PickedFile | null> {
+  const files = await pickVisitFiles();
+  return files[0] ?? null;
+}
+
+export async function pickVisitFiles(): Promise<PickedFile[]> {
   const result = await DocumentPicker.getDocumentAsync({
     type: ['application/pdf', 'image/*', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
     copyToCacheDirectory: true,
-    multiple: false,
+    multiple: true,
   });
-  if (result.canceled) return null;
-  const asset = result.assets[0];
-  if (!asset?.uri) return null;
-  return { uri: asset.uri, name: asset.name ?? 'visit.pdf', mime: asset.mimeType ?? 'application/octet-stream' };
+  if (result.canceled) return [];
+  return (result.assets ?? [])
+    .filter((asset) => Boolean(asset.uri))
+    .map((asset) => ({
+      uri: asset.uri,
+      name: asset.name ?? 'visit.pdf',
+      mime: asset.mimeType ?? 'application/octet-stream',
+    }));
 }
 
 export async function signedVaultUrl(path: string, expiresIn = 60 * 60) {

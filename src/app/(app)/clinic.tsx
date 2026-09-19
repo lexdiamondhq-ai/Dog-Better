@@ -55,7 +55,7 @@ export default function Clinic() {
 
   return (
     <Screen>
-      <ScreenHeader title="Clinic pack" subtitle={dog ? `${dog.name}'s folder. Memory, not a diagnosis.` : 'Pick a dog first'} onBack={() => router.back()} />
+      <ScreenHeader voice="clinical" title="Clinic pack" subtitle={dog ? `${dog.name}'s folder. Memory, not a diagnosis.` : 'Pick a dog first'} onBack={() => router.back()} />
 
       <Text variant="caption" tone="tertiary">
         Hand this over in the room. The clinician decides what it means. You just stopped guessing from memory.

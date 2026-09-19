@@ -11,7 +11,7 @@ export default function CalendarScreen() {
 
   return (
     <Screen>
-      <ScreenHeader title="Calendar" subtitle={dog ? `${dog.name}'s meds, walks, vet days` : 'Pick a dog first'} onBack={() => router.back()} />
+      <ScreenHeader voice="clinical" title="Calendar" subtitle={dog ? `${dog.name}'s meds, walks, vet days` : 'Pick a dog first'} onBack={() => router.back()} />
       {dog ? (
         <ReminderCalendar dogId={dog.id} />
       ) : (

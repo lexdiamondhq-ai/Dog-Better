@@ -35,7 +35,7 @@ export function Button({ label, onPress, kind = 'primary', size = 'md', icon, lo
     accent: t.onAccent,
   }[kind];
 
-  const height = { sm: 40, md: 48, lg: 58 }[size];
+  const height = { sm: 44, md: 48, lg: 58 }[size];
   const iconSize = { sm: 16, md: 18, lg: 20 }[size];
   const variant = size === 'lg' ? 'headline' : size === 'sm' ? 'label' : 'bodyStrong';
 

@@ -102,6 +102,8 @@ export function Icon({ name, size = 22, color, weight = 'semibold', style }: Pro
       size={size}
       tintColor={color ?? t.text}
       weight={weight}
+      accessible={false}
+      importantForAccessibility="no"
       style={[{ width: size, height: size }, style]}
     />
   );

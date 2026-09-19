@@ -8,6 +8,8 @@ import { Icon } from '@/components/ui/Icon';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
+import { formatDistance } from '@/lib/places';
+import { usePreferences } from '@/lib/preferences';
 import { fillVetPhone, geocodePlace, searchVetsNear, type VetHit } from '@/lib/vets';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -18,6 +20,7 @@ type Props = {
 
 export function VetSearch({ onPick }: Props) {
   const t = useTheme();
+  const { weightUnit } = usePreferences();
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<VetHit[]>([]);
   const [busy, setBusy] = useState<'near' | 'zip' | null>(null);
@@ -101,7 +104,7 @@ export function VetSearch({ onPick }: Props) {
               <Text variant="caption" tone="secondary">
                 {picking === `${v.name}-${v.lat}` && !v.phone
                   ? [v.address, 'Looking up the phone'].filter(Boolean).join(' · ')
-                  : [v.address, `${v.km.toFixed(1)} km`, v.phone].filter(Boolean).join(' · ')}
+                  : [v.address, formatDistance(v.km, weightUnit), v.phone].filter(Boolean).join(' · ')}
               </Text>
             </View>
           </Surface>

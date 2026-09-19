@@ -8,7 +8,7 @@ import { Field } from '@/components/ui/Field';
 import { Surface } from '@/components/ui/Surface';
 import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
-import { type SheetMeal, type SheetMed, type SheetRead } from '@/engine/sheetMeds';
+import { type SheetFollowUp, type SheetMeal, type SheetMed, type SheetRead } from '@/engine/sheetMeds';
 import { clockNow, nextClockSlot, prettyTime } from '@/lib/reminders';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
@@ -24,14 +24,18 @@ type Props = {
 };
 
 /**
- * Nothing from a visit sheet writes to the dog or the calendar until the owner checks the times.
- * The reader never invents 08:00 or a 7-day course; those fields stay empty until someone sets them.
+ * Edit what the reader found. Saving replaces earlier visit-sheet reminders on the calendar.
  */
 export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirming }: Props) {
   const t = useTheme();
 
-  const setMeds = (medications: SheetMed[]) => onChange({ ...read, medications, found: medications.length > 0 || read.meals.length > 0 });
-  const setMeals = (meals: SheetMeal[]) => onChange({ ...read, meals, found: read.medications.length > 0 || meals.length > 0 });
+  const found = (medications: SheetMed[], meals: SheetMeal[], followUps: SheetFollowUp[]) =>
+    medications.length > 0 || meals.length > 0 || followUps.length > 0;
+  const follows = read.followUps ?? [];
+  const setMeds = (medications: SheetMed[]) => onChange({ ...read, medications, found: found(medications, read.meals, follows) });
+  const setMeals = (meals: SheetMeal[]) => onChange({ ...read, meals, found: found(read.medications, meals, follows) });
+  const setFollows = (followUps: SheetFollowUp[]) => onChange({ ...read, followUps, found: found(read.medications, read.meals, followUps) });
+  const patchFollow = (i: number, patch: Partial<SheetFollowUp>) => setFollows(follows.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
 
   const patchMed = (i: number, patch: Partial<SheetMed>) => setMeds(read.medications.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
   const patchMeal = (i: number, patch: Partial<SheetMeal>) => setMeals(read.meals.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
@@ -41,14 +45,15 @@ export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirmi
       <View style={{ gap: space.xs }}>
         <Text variant="headline">Check before we save</Text>
         <Text variant="caption" tone="secondary">
-          Times and days come from the sheet or from you. Nothing is guessed, and nothing is scheduled until you confirm. Confirming replaces earlier reminders from a visit sheet.
+          Doses and follow-up dates are already on the calendar if the read found them. Edit here and save again to replace that set.
         </Text>
       </View>
 
       {read.medications.map((med, i) => (
         <View key={`${med.name}-${i}`} style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
           <Field label="Medication" value={med.name} onChangeText={(name) => patchMed(i, { name })} />
-          <Field label="Dose" value={med.dose ?? ''} onChangeText={(dose) => patchMed(i, { dose: dose.trim() || null })} placeholder="1 tablet (75 mg)" />
+          <Field label="How much" value={med.quantity ?? ''} onChangeText={(quantity) => patchMed(i, { quantity: quantity.trim() || null })} placeholder="1 tablet" />
+          <Field label="Strength" value={med.dose ?? ''} onChangeText={(dose) => patchMed(i, { dose: dose.trim() || null })} placeholder="75 mg" />
           <TimesRow
             times={med.times}
             emptyHint={med.note ?? 'No clock time was on the sheet. Add one to remind.'}
@@ -63,6 +68,25 @@ export function SheetReadReview({ read, onChange, onConfirm, onDiscard, confirmi
           <Tap onPress={() => setMeds(read.medications.filter((_, idx) => idx !== i))} haptic="selection">
             <Text variant="label" tone="bad">
               Remove this medication
+            </Text>
+          </Tap>
+        </View>
+      ))}
+
+      {follows.map((follow, i) => (
+        <View key={`${follow.title}-${follow.date}-${i}`} style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+          <Field label={follow.kind === 'vaccine' ? 'Shot' : 'Follow-up'} value={follow.title} onChangeText={(title) => patchFollow(i, { title })} />
+          <Field label="Date" value={follow.date} onChangeText={(date) => patchFollow(i, { date })} placeholder="2026-10-12" />
+          <TimesRow
+            times={[follow.time]}
+            emptyHint="Add a time for this visit."
+            replace
+            onAdd={(time) => patchFollow(i, { time })}
+            onRemove={() => patchFollow(i, { time: '09:00' })}
+          />
+          <Tap onPress={() => setFollows(follows.filter((_, idx) => idx !== i))} haptic="selection">
+            <Text variant="label" tone="bad">
+              Remove this follow-up
             </Text>
           </Tap>
         </View>

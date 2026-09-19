@@ -6,6 +6,7 @@ import Animated, { FadeInUp, LinearTransition } from 'react-native-reanimated';
 import { AdSlot } from '@/components/ads/AdSlot';
 import { LookOrb } from '@/components/look/LookOrb';
 import { Chip } from '@/components/ui/Chip';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { Screen, ScreenHeader, Section } from '@/components/ui/Screen';
 import { GroupedList, Surface } from '@/components/ui/Surface';
@@ -55,9 +56,13 @@ export default function Learn() {
     <Screen dock refreshing={a.refreshing} onRefresh={a.refresh}>
       <ScreenHeader title={dog?.name ?? 'Learn'} subtitle="Flip five cards. Know a little more." />
 
-      <Animated.View entering={FadeInUp.duration(280)} layout={LinearTransition}>
-        <TonightSession session={session} footer={<ShopNote topic={session.topic} />} />
-      </Animated.View>
+      {a.loading ? (
+        <Skeleton height={220} />
+      ) : (
+        <Animated.View entering={t.reduceMotion ? undefined : FadeInUp.duration(280)} layout={LinearTransition}>
+          <TonightSession session={session} footer={<ShopNote topic={session.topic} />} />
+        </Animated.View>
+      )}
 
       <Section title="Also useful">
         <GroupedList>

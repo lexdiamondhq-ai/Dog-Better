@@ -79,7 +79,16 @@ export type LiveWalk = {
 
 export { useLiveWalk } from './WalksProvider';
 
-export async function saveWalk(input: { dogId: string; ownerId: string; startedAt: Date; endedAt: Date; steps: number; notes?: string | null }) {
+export async function saveWalk(input: {
+  dogId: string;
+  ownerId: string;
+  startedAt: Date;
+  endedAt: Date;
+  steps: number;
+  notes?: string | null;
+  metres?: number | null;
+  stopCount?: number | null;
+}) {
   const { data, error } = await supabase
     .from('walks')
     .insert({
@@ -89,6 +98,8 @@ export async function saveWalk(input: { dogId: string; ownerId: string; startedA
       ended_at: input.endedAt.toISOString(),
       steps: input.steps,
       notes: input.notes ?? null,
+      metres: input.metres ?? null,
+      stop_count: input.stopCount ?? null,
     })
     .select('id')
     .single();

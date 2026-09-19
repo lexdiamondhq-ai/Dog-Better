@@ -99,6 +99,6 @@ export default function Barks() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0A0705' },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: space.md, paddingHorizontal: space.xl },
-  back: { position: 'absolute', left: space.md, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,14,11,0.45)' },
-  add: { position: 'absolute', right: space.md, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,14,11,0.45)' },
+  back: { position: 'absolute', left: space.md, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,14,11,0.45)' },
+  add: { position: 'absolute', right: space.md, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(20,14,11,0.45)' },
 });

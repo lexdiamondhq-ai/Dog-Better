@@ -40,7 +40,7 @@ export async function exportAllData(userId: string, email: string | undefined) {
       userId,
       (dogs.data ?? []).map((d) => d.id),
     ),
-    note: 'Photos and videos are referenced by storage path. Email support@dogbetter.app for a copy of the files themselves. Calendar reminders live on this device and are included here.',
+    note: 'Photos and videos are referenced by storage path. Email support@dogbetter.app for a copy of the files themselves. Calendar reminders are included from your account.',
   };
   const dir = new Directory(Paths.cache, 'exports');
   if (!dir.exists) dir.create();

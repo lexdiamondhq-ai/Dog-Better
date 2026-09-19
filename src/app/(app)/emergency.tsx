@@ -88,7 +88,7 @@ export default function Emergency() {
           <Button label="Nearest emergency vet" icon="location" kind={dog?.vet_phone ? 'secondary' : 'danger'} size="lg" onPress={findVet} style={{ flex: 1 }} />
         </View>
       }>
-      <ScreenHeader eyebrow="Emergency" title="Something is wrong" onBack={() => router.back()} large={false} trailing={<Clock elapsed={elapsed} />} />
+      <ScreenHeader voice="clinical" eyebrow="Emergency" title="Something is wrong" onBack={() => router.back()} large={false} trailing={<Clock elapsed={elapsed} />} />
 
       <Animated.View entering={FadeInUp.delay(40).duration(260)}>
         <Surface kind="raised" style={[styles.banner, { borderColor: t.bad, borderWidth: 1.5 }]}>
@@ -130,6 +130,7 @@ export default function Emergency() {
         </Surface>
       </Section>
 
+      <Button label="Lost dog packet" icon="warning" kind="danger" onPress={() => router.push('/(app)/lost')} />
       <Button label="Open clinic pack" icon="document" kind="secondary" onPress={() => router.push('/(app)/clinic')} />
 
       <Tap onPress={() => router.push('/(app)/snap')} haptic="medium">

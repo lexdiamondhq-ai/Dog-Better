@@ -15,6 +15,7 @@ import { Tap } from '@/components/ui/Tap';
 import { Text } from '@/components/ui/Text';
 import { useAuth } from '@/lib/auth';
 import { humanizeError } from '@/lib/errors';
+import { usePreferences } from '@/lib/preferences';
 import { queueWalkStart } from '@/lib/walkIntent';
 import {
   fetchNearbyDbPlaces,
@@ -103,6 +104,7 @@ export default function WalkSpots() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
+  const { weightUnit } = usePreferences();
   const mapRef = useRef<MapView>(null);
   const mapReady = useRef(false);
   const pendingRegion = useRef<Region | null>(null);
@@ -294,7 +296,7 @@ export default function WalkSpots() {
                     {picked.name}
                   </Text>
                   <Text variant="caption" tone="secondary" numberOfLines={1}>
-                    {AREA_LABEL[picked.kind] ?? KIND_META[picked.kind].label} · {formatDistance(picked.km)}
+                    {AREA_LABEL[picked.kind] ?? KIND_META[picked.kind].label} · {formatDistance(picked.km, weightUnit)}
                   </Text>
                 </View>
               </View>
@@ -328,14 +330,14 @@ const styles = StyleSheet.create({
   top: { position: 'absolute', left: 0, right: 0, paddingHorizontal: space.lg, gap: space.sm },
   topBar: { padding: space.lg, gap: space.md },
   topHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  back: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  back: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   filters: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  searchHere: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, height: 40, alignSelf: 'flex-start' },
+  searchHere: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg, height: 44, alignSelf: 'flex-start' },
   bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: space.lg, gap: space.sm },
   notice: { padding: space.md },
   card: { gap: space.md, minHeight: 88 },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  cardIcon: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  cardIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   pinWrap: { alignItems: 'center' },
   pin: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   pinTail: { width: 0, height: 0, borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', marginTop: -2 },

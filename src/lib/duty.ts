@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Href } from 'expo-router';
 
 import type { IconName } from '@/components/ui/Icon';
+import { estimatePavement, type Pavement } from '@/engine/pavement';
 import { kindMeta, type Reminder } from '@/lib/reminders';
 import { fetchRecentWalks } from '@/lib/walks';
 
@@ -68,9 +69,14 @@ export function pickDuty(input: { name: string; dueToday: Reminder[]; nextMed?: 
   return { line: `The roster is clear. Point the camera at ${name}.`, label: 'Look at this photo', icon: 'sparkle', href: '/(app)/look' };
 }
 
+type Meteo = {
+  current?: { temperature_2m?: number; cloud_cover?: number; uv_index?: number };
+  hourly?: { time?: string[]; temperature_2m?: number[]; cloud_cover?: number[]; uv_index?: number[] };
+};
+
 /** Heat is optional. Never prompt. Only fill the tile if location was already granted on a map or walk. */
-export function useHeatF() {
-  const [heatF, setHeatF] = useState<number | null>(null);
+export function usePavement() {
+  const [heat, setHeat] = useState<Pavement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -79,10 +85,25 @@ export function useHeatF() {
         const perm = await Location.getForegroundPermissionsAsync();
         if (!perm.granted) return;
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&current=temperature_2m&temperature_unit=fahrenheit`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${pos.coords.latitude}&longitude=${pos.coords.longitude}&current=temperature_2m,cloud_cover,uv_index&hourly=temperature_2m,cloud_cover,uv_index&temperature_unit=fahrenheit&forecast_days=1`;
         const res = await fetch(url);
-        const json = (await res.json()) as { current?: { temperature_2m?: number } };
-        if (alive && typeof json.current?.temperature_2m === 'number') setHeatF(json.current.temperature_2m);
+        const json = (await res.json()) as Meteo;
+        const air = json.current?.temperature_2m;
+        if (!alive || typeof air !== 'number') return;
+        const hourly = (json.hourly?.time ?? []).map((stamp, i) => ({
+          hour: new Date(stamp).getHours(),
+          airF: json.hourly?.temperature_2m?.[i] ?? air,
+          cloudPct: json.hourly?.cloud_cover?.[i] ?? null,
+          uv: json.hourly?.uv_index?.[i] ?? null,
+        }));
+        setHeat(
+          estimatePavement({
+            airF: air,
+            cloudPct: json.current?.cloud_cover ?? null,
+            uv: json.current?.uv_index ?? null,
+            hourly,
+          }),
+        );
       } catch {
         /* heat is optional */
       }
@@ -92,20 +113,31 @@ export function useHeatF() {
     };
   }, []);
 
-  return heatF;
+  return heat;
+}
+
+export function useHeatF() {
+  return usePavement()?.airF ?? null;
 }
 
 export function useWalksToday(dogId: string | undefined) {
   const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!dogId) return;
+    if (!dogId) {
+      setCount(0);
+      setLoading(false);
+      return;
+    }
     const start = new Date();
     start.setHours(0, 0, 0, 0);
+    setLoading(true);
     fetchRecentWalks(dogId, 8)
       .then((rows) => setCount(rows.filter((w) => new Date(w.started_at).getTime() >= start.getTime()).length))
-      .catch(() => setCount(0));
+      .catch(() => setCount(0))
+      .finally(() => setLoading(false));
   }, [dogId]);
 
-  return count;
+  return { count, loading };
 }

@@ -1,6 +1,6 @@
 import type { Dog, FoodScan, HealthLog, WeightEntry } from '@/lib/database.types';
 import { dailyCalories } from '@/engine/foodSafety';
-import { medsLineFromNotes } from '@/engine/sheetMeds';
+import { medsLineFromNotes, sheetShotsFromNotes } from '@/engine/sheetMeds';
 import { humanize } from '@/lib/activity';
 import type { WeightUnit } from '@/lib/preferences';
 import { formatWeight, fromKg } from '@/lib/units';
@@ -13,7 +13,7 @@ export function buildHandoffSheet(dog: Dog, ownerEmail?: string | null, weightUn
   const kcal = dog.weight_kg ? dailyCalories(Number(dog.weight_kg)) : null;
   const lines = [
     `${dog.name.toUpperCase()} - CARE SHEET`,
-    [dog.breed, dog.sex, formatWeight(dog.weight_kg, weightUnit)].filter(Boolean).join(' - '),
+    [dog.breed, dog.sex, dog.altered == null ? null : dog.altered ? (dog.sex === 'female' ? 'spayed' : 'neutered') : 'intact', dog.coat, formatWeight(dog.weight_kg, weightUnit)].filter(Boolean).join(' - '),
     '',
     'FEEDING',
     kcal ? `About ${kcal} kcal a day, split into two meals. Treats stay under ${Math.round(kcal * 0.1)} kcal total.` : 'Two meals a day. Ask the owner for amounts.',
@@ -23,6 +23,9 @@ export function buildHandoffSheet(dog: Dog, ownerEmail?: string | null, weightUn
     '',
     'MEDICATIONS',
     medsLineFromNotes(dog.notes) ?? '- None pulled from a visit yet. Ask the owner.',
+    '',
+    'SHOTS',
+    sheetShotsFromNotes(dog.notes).followUps.map((f) => `- ${f.title} ${f.date}`).join('\n') || '- None on file.',
     '',
     'GOOD TO KNOW',
     dog.notes ?? '- Ask the owner for routines and quirks.',

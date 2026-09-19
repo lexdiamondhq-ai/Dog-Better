@@ -22,9 +22,12 @@ export type Database = {
       dogs: {
         Row: {
           allergies: string[];
+          altered: boolean | null;
           avatar_url: string | null;
           birthdate: string | null;
+          birthdate_estimated: boolean | null;
           breed: string | null;
+          coat: string | null;
           created_at: string;
           id: string;
           microchip: string | null;
@@ -38,9 +41,12 @@ export type Database = {
         };
         Insert: {
           allergies?: string[];
+          altered?: boolean | null;
           avatar_url?: string | null;
           birthdate?: string | null;
+          birthdate_estimated?: boolean | null;
           breed?: string | null;
+          coat?: string | null;
           created_at?: string;
           id?: string;
           microchip?: string | null;
@@ -54,9 +60,12 @@ export type Database = {
         };
         Update: {
           allergies?: string[];
+          altered?: boolean | null;
           avatar_url?: string | null;
           birthdate?: string | null;
+          birthdate_estimated?: boolean | null;
           breed?: string | null;
+          coat?: string | null;
           created_at?: string;
           id?: string;
           microchip?: string | null;
@@ -261,10 +270,63 @@ export type Database = {
           { foreignKeyName: 'posts_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
         ];
       };
+      reminders: {
+        Row: {
+          completed_at: string | null;
+          completed_by: string | null;
+          completed_by_name: string | null;
+          color: string | null;
+          created_at: string;
+          date: string;
+          dog_id: string;
+          id: string;
+          kind: string;
+          notes: string | null;
+          owner_id: string;
+          time: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          completed_at?: string | null;
+          completed_by?: string | null;
+          completed_by_name?: string | null;
+          color?: string | null;
+          created_at?: string;
+          date: string;
+          dog_id: string;
+          id?: string;
+          kind: string;
+          notes?: string | null;
+          owner_id: string;
+          time: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          completed_at?: string | null;
+          completed_by?: string | null;
+          completed_by_name?: string | null;
+          color?: string | null;
+          created_at?: string;
+          date?: string;
+          dog_id?: string;
+          id?: string;
+          kind?: string;
+          notes?: string | null;
+          owner_id?: string;
+          time?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          { foreignKeyName: 'reminders_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
+        ];
+      };
       walks: {
-        Row: { created_at: string; dog_id: string; ended_at: string; id: string; notes: string | null; owner_id: string; started_at: string; steps: number };
-        Insert: { created_at?: string; dog_id: string; ended_at: string; id?: string; notes?: string | null; owner_id: string; started_at: string; steps: number };
-        Update: { created_at?: string; dog_id?: string; ended_at?: string; id?: string; notes?: string | null; owner_id?: string; started_at?: string; steps?: number };
+        Row: { created_at: string; dog_id: string; ended_at: string; id: string; metres: number | null; notes: string | null; owner_id: string; started_at: string; steps: number; stop_count: number | null };
+        Insert: { created_at?: string; dog_id: string; ended_at: string; id?: string; metres?: number | null; notes?: string | null; owner_id: string; started_at: string; steps: number; stop_count?: number | null };
+        Update: { created_at?: string; dog_id?: string; ended_at?: string; id?: string; metres?: number | null; notes?: string | null; owner_id?: string; started_at?: string; steps?: number; stop_count?: number | null };
         Relationships: [
           { foreignKeyName: 'walks_dog_id_fkey'; columns: ['dog_id']; isOneToOne: false; referencedRelation: 'dogs'; referencedColumns: ['id'] },
         ];
@@ -346,5 +408,6 @@ export type PostComment = Tables<'post_comments'>;
 export type Circle = Tables<'circles'>;
 export type CircleMember = Tables<'circle_members'>;
 export type Walk = Tables<'walks'>;
+export type ReminderRow = Tables<'reminders'>;
 export type Report = Tables<'reports'>;
 export type BlockedUser = Tables<'blocked_users'>;

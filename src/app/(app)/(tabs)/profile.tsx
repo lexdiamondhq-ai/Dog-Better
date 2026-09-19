@@ -1,7 +1,7 @@
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Dimensions, Linking, StyleSheet, View } from 'react-native';
+import { Linking, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 
 import { DogAvatar } from '@/components/ui/DogAvatar';
@@ -24,11 +24,11 @@ import { useVetVisits } from '@/lib/visits';
 import { useTheme } from '@/theme/ThemeProvider';
 import { radius, space } from '@/theme/tokens';
 
-const GRID_W = Dimensions.get('window').width - space.xl * 2;
-const CELL = (GRID_W - space.sm * 2) / 3;
-
 export default function Profile() {
   const t = useTheme();
+  const { width: windowW } = useWindowDimensions();
+  const gridW = windowW - space.xl * 2;
+  const cell = (gridW - space.sm * 2) / 3;
   const router = useRouter();
   const { user } = useAuth();
   const { dog, dogs, setActiveDog, refresh } = useDogs();
@@ -129,7 +129,7 @@ export default function Profile() {
             {gallery.photos.map((p, i) => (
               <Animated.View key={p.id} entering={FadeInUp.delay(Math.min(i, 9) * 40)}>
                 <Tap onPress={() => router.push({ pathname: '/(app)/photo/[id]', params: { id: p.id } })} haptic="selection" scaleTo={0.96} accessibilityLabel={p.caption ?? `Photo ${gallery.photos.length - i} of ${gallery.photos.length}`}>
-                  <Image source={{ uri: p.url }} style={[styles.cell, i === 0 && styles.cellHero]} contentFit="cover" transition={200} />
+                  <Image source={{ uri: p.url }} style={[styles.cell, { width: cell, height: cell }, i === 0 && { width: cell * 2 + space.sm, height: cell * 2 + space.sm }]} contentFit="cover" transition={200} />
                 </Tap>
               </Animated.View>
             ))}
@@ -236,15 +236,14 @@ function cap(s: string) {
 }
 
 const styles = StyleSheet.create({
-  iconBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
+  iconBtn: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginTop: 2 },
   headerActions: { flexDirection: 'row', gap: space.sm },
   switcher: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   dogChip: { flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingLeft: 6, paddingRight: space.md, height: 38, borderRadius: radius.pill },
   inlineAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   emptyGallery: { alignItems: 'center', gap: space.sm, paddingVertical: space.xxl },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
-  cell: { width: CELL, height: CELL, borderRadius: radius.md },
-  cellHero: { width: CELL * 2 + space.sm, height: CELL * 2 + space.sm },
+  cell: { borderRadius: radius.md },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingHorizontal: space.lg, paddingVertical: space.md },
   visitRow: { flexDirection: 'row', gap: space.sm },
   visitThumb: { width: 72, height: 72, borderRadius: 14 },

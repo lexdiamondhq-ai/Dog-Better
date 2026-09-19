@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
@@ -7,6 +8,7 @@ import { OnboardingMascot, type MascotPose } from '@/components/brand/Onboarding
 import { VetSearch } from '@/components/dogs/VetSearch';
 import { Button } from '@/components/ui/Button';
 import { Chip } from '@/components/ui/Chip';
+import { DateField } from '@/components/ui/DateField';
 import { DogAvatar } from '@/components/ui/DogAvatar';
 import { Field } from '@/components/ui/Field';
 import { Icon } from '@/components/ui/Icon';
@@ -29,6 +31,8 @@ const BREEDS = ['Mixed breed', 'Labrador', 'Golden Retriever', 'French Bulldog',
 
 type Step = 'name' | 'about' | 'body' | 'vet' | 'photo';
 const STEPS: Step[] = ['name', 'about', 'body', 'vet', 'photo'];
+const DRAFT_KEY = 'dogbetter.onboarding.draft.v1';
+type BirthMode = 'exact' | 'estimate';
 const POSE: Record<Step, MascotPose> = {
   name: 'walk',
   about: 'bark',
@@ -54,6 +58,8 @@ export default function Onboarding() {
   const [sex, setSex] = useState<'male' | 'female' | 'unknown'>('unknown');
   const [years, setYears] = useState('');
   const [months, setMonths] = useState('');
+  const [birthMode, setBirthMode] = useState<BirthMode>('estimate');
+  const [exactBirth, setExactBirth] = useState('');
   const [weight, setWeight] = useState('');
   // Preferences load async; until then the unit falls back to the stored default at first render.
   const [unit, setUnit] = useState<'kg' | 'lb' | null>(prefsLoaded ? weightUnit : null);
@@ -68,6 +74,59 @@ export default function Onboarding() {
   const [photo, setPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    AsyncStorage.getItem(DRAFT_KEY)
+      .then((raw) => {
+        if (!raw || cancelled) return;
+        const d = JSON.parse(raw) as {
+          step?: Step;
+          name?: string;
+          breed?: string;
+          sex?: 'male' | 'female' | 'unknown';
+          years?: string;
+          months?: string;
+          birthMode?: BirthMode;
+          exactBirth?: string;
+          weight?: string;
+          vetName?: string;
+          vetPhone?: string;
+          photo?: string | null;
+        };
+        if (d.step && STEPS.includes(d.step)) setStep(d.step);
+        if (d.name) setName(d.name);
+        if (d.breed) setBreed(d.breed);
+        if (d.sex) setSex(d.sex);
+        if (d.years) setYears(d.years);
+        if (d.months) setMonths(d.months);
+        if (d.birthMode) setBirthMode(d.birthMode);
+        if (d.exactBirth) setExactBirth(d.exactBirth);
+        if (d.weight) setWeight(d.weight);
+        if (d.vetName) setVetName(d.vetName);
+        if (d.vetPhone) setVetPhone(d.vetPhone);
+        if (d.photo) setPhoto(d.photo);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setDraftReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady) return;
+    const id = setTimeout(() => {
+      AsyncStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ step, name, breed, sex, years, months, birthMode, exactBirth, weight, vetName, vetPhone, photo }),
+      ).catch(() => {});
+    }, 250);
+    return () => clearTimeout(id);
+  }, [draftReady, step, name, breed, sex, years, months, birthMode, exactBirth, weight, vetName, vetPhone, photo]);
 
   const idx = STEPS.indexOf(step);
   const next = () => setStep(STEPS[Math.min(STEPS.length - 1, idx + 1)]);
@@ -82,6 +141,7 @@ export default function Onboarding() {
   const weightKg = parseWeightInput(weight, unitResolved);
 
   const birthdate = (() => {
+    if (birthMode === 'exact') return exactBirth || null;
     const y = parseInt(years || '0', 10);
     const m = parseInt(months || '0', 10);
     if (!y && !m) return null;
@@ -89,6 +149,7 @@ export default function Onboarding() {
     d.setMonth(d.getMonth() - (y * 12 + m));
     return d.toISOString().slice(0, 10);
   })();
+  const birthdateEstimated = birthMode === 'estimate' && Boolean(birthdate);
 
   const finish = async () => {
     if (!user) return;
@@ -108,6 +169,7 @@ export default function Onboarding() {
           breed: breed || null,
           sex,
           birthdate,
+          birthdate_estimated: birthdateEstimated,
           weight_kg: weightKg ? Math.round(weightKg * 10) / 10 : null,
           avatar_url,
           vet_name: vetName.trim() || null,
@@ -120,6 +182,7 @@ export default function Onboarding() {
       setWeightUnit(unitResolved);
       setActiveDog(data.id);
       await refresh();
+      await AsyncStorage.removeItem(DRAFT_KEY);
       await award({ kind: 'dog', key: `dog:${data.id}`, dogId: data.id });
       // First dog: land on the trial offer. Gate also sends here. Do not replace to Today or Skip is never seen.
       router.replace(adding ? '/(app)/(tabs)/profile' : { pathname: '/paywall', params: { from: 'onboarding' } });
@@ -193,14 +256,22 @@ export default function Onboarding() {
             <Text variant="body" tone="secondary">
               Treat portions and toxicity thresholds are calculated from weight, so this matters more than it looks.
             </Text>
-            <View style={styles.row}>
-              <View style={{ flex: 1 }}>
-                <Field label="Years" placeholder="0" value={years} onChangeText={setYears} keyboardType="number-pad" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Field label="Months" placeholder="0" value={months} onChangeText={setMonths} keyboardType="number-pad" />
-              </View>
+            <View style={styles.chips}>
+              <Chip label="I know the exact date" selected={birthMode === 'exact'} onPress={() => setBirthMode('exact')} />
+              <Chip label="Estimate by age" selected={birthMode === 'estimate'} onPress={() => setBirthMode('estimate')} />
             </View>
+            {birthMode === 'exact' ? (
+              <DateField label="Birthday" value={exactBirth} onChange={setExactBirth} maximumDate={new Date()} hint="This is the date we keep. Age will not drift." />
+            ) : (
+              <View style={styles.row}>
+                <View style={{ flex: 1 }}>
+                  <Field label="Years" placeholder="0" value={years} onChangeText={setYears} keyboardType="number-pad" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field label="Months" placeholder="0" value={months} onChangeText={setMonths} keyboardType="number-pad" />
+                </View>
+              </View>
+            )}
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <Field label="Weight" placeholder="0" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" suffix={unitResolved} />
@@ -302,5 +373,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.md, alignItems: 'flex-end' },
   unitToggle: { flexDirection: 'row', padding: 4, borderRadius: radius.pill, height: 54, alignItems: 'center' },
   unit: { paddingHorizontal: space.lg, height: 46, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center' },
-  camBadge: { position: 'absolute', right: 6, bottom: 6, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  camBadge: { position: 'absolute', right: 6, bottom: 6, width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

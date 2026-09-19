@@ -2,7 +2,10 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { captureWithCamera, isImagePath, pickFromLibrary, pickVisitFile, signedVaultUrl, uploadImage, uploadVaultFile } from './media';
+import * as FileSystem from 'expo-file-system/legacy';
+
+import { captureWithCamera, extOf, isImagePath, pickFromLibrary, pickVisitFiles, signedVaultUrl, uploadImage, uploadVaultFile } from './media';
+import { mimeFromPath } from './readVisitSheet';
 import { supabase } from './supabase';
 import type { VaultPhoto } from './vault';
 
@@ -34,35 +37,54 @@ export function useVetVisits(dogId: string | undefined) {
   return { visits, loading, reload: load };
 }
 
-export async function uploadVetVisit(input: { dogId: string; userId: string; title?: string; from: VisitSource }) {
+export type SavedVisit = { storage_path: string; caption: string; isImage: boolean; localUri: string; mime: string };
+
+export async function uploadVetVisit(input: { dogId: string; userId: string; title?: string; from: VisitSource }): Promise<SavedVisit[] | null> {
   const folder = `dogs/${input.dogId}/visits`;
-  let storage_path: string;
-  let fileLabel: string | null = null;
-  let localUri: string;
+  const items: { localUri: string; mime: string; storage_path: string; fileLabel: string | null }[] = [];
 
   if (input.from === 'file') {
-    const file = await pickVisitFile();
-    if (!file) return null;
-    localUri = file.uri;
-    storage_path = await uploadVaultFile({ bucket: 'vault', userId: input.userId, folder, uri: file.uri, name: file.name, mime: file.mime });
-    fileLabel = file.name;
+    const files = await pickVisitFiles();
+    if (!files.length) return null;
+    for (const file of files) {
+      const storage_path = await uploadVaultFile({ bucket: 'vault', userId: input.userId, folder, uri: file.uri, name: file.name, mime: file.mime });
+      items.push({ localUri: file.uri, mime: file.mime, storage_path, fileLabel: file.name });
+    }
   } else {
     const uri = input.from === 'camera' ? await captureWithCamera([4, 5]) : await pickFromLibrary([4, 5]);
     if (!uri) return null;
-    localUri = uri;
-    storage_path = await uploadImage({ bucket: 'vault', userId: input.userId, folder, uri });
+    const storage_path = await uploadImage({ bucket: 'vault', userId: input.userId, folder, uri });
+    items.push({ localUri: uri, mime: 'image/jpeg', storage_path, fileLabel: null });
   }
 
-  const caption = input.title?.trim() || fileLabel || `Vet visit ${new Date().toLocaleDateString()}`;
-  const { error } = await supabase.from('dog_photos').insert({
-    dog_id: input.dogId,
-    owner_id: input.userId,
-    storage_path,
-    caption,
-    kind: 'vet_visit',
-  });
-  if (error) throw error;
-  return { storage_path, caption, isImage: isImagePath(storage_path), localUri };
+  const saved: SavedVisit[] = [];
+  for (const item of items) {
+    const caption = input.title?.trim() || item.fileLabel || `Visit ${new Date().toLocaleDateString()}`;
+    const { error } = await supabase.from('dog_photos').insert({
+      dog_id: input.dogId,
+      owner_id: input.userId,
+      storage_path: item.storage_path,
+      caption,
+      kind: 'vet_visit',
+    });
+    if (error) throw error;
+    saved.push({
+      storage_path: item.storage_path,
+      caption,
+      isImage: isImagePath(item.storage_path),
+      localUri: item.localUri,
+      mime: item.mime,
+    });
+  }
+  return saved;
+}
+
+/** Download a saved visit so the sheet reader can run again without a new upload. */
+export async function materializeVisitForRead(visit: { url: string; storage_path: string }) {
+  const ext = extOf(visit.storage_path) || 'bin';
+  const dest = `${FileSystem.cacheDirectory}visit-read-${Date.now()}.${ext}`;
+  const { uri } = await FileSystem.downloadAsync(visit.url, dest);
+  return { uri, path: visit.storage_path, mime: mimeFromPath(visit.storage_path) };
 }
 
 export function askVetVisitSource(onPick: (from: VisitSource) => void) {
