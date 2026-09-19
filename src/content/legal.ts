@@ -6,7 +6,7 @@
 
 export type LegalDoc = { title: string; updated: string; sections: { heading: string; body: string }[] };
 
-export const LEGAL_UPDATED = 'September 17, 2026';
+export const LEGAL_UPDATED = 'September 18, 2026';
 
 export const LEGAL: Record<'privacy' | 'terms', LegalDoc> = {
   privacy: {
@@ -68,7 +68,7 @@ export const LEGAL: Record<'privacy' | 'terms', LegalDoc> = {
       },
       {
         heading: 'Dog Better Premium',
-        body: 'Premium is an auto-renewing subscription billed through your Apple ID, offered monthly and yearly at the price shown in the app before you subscribe. Some plans include a free trial; the trial length and the price after it are shown before you start. Payment is charged to your Apple ID at confirmation of purchase, or at the end of the free trial. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. You can manage or cancel it in your Apple ID settings at any time; cancelling stops the next renewal and you keep Premium until the period ends. Refunds are handled by Apple under its terms. Records, emergency mode, the care sheet, the treat scanner, and community stay free on every plan.',
+        body: 'Premium is an auto-renewing subscription billed through your Apple ID, offered monthly and yearly at the price shown in the app before you subscribe. Some plans include a free trial; the trial length and the price after it are shown before you start. Payment is charged to your Apple ID at confirmation of purchase, or at the end of the free trial. The subscription renews automatically unless you cancel at least 24 hours before the end of the current period. You can manage or cancel it in your Apple ID settings at any time; cancelling stops the next renewal and you keep Premium until the period ends. Refunds are handled by Apple under its terms. Records, emergency mode, the care sheet, visit medication reads, the treat scanner, and community stay free on every plan.',
       },
       {
         heading: 'Your content',

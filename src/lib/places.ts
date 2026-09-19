@@ -243,7 +243,13 @@ export function haversineKm(aLat: number, aLng: number, bLat: number, bLng: numb
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
-export function formatDistance(km: number) {
+/** Pounds in settings means US miles. Kilograms means metric. Default miles. */
+export function formatDistance(km: number, unit: 'lb' | 'kg' = 'lb') {
+  if (unit === 'lb') {
+    const mi = km * 0.621371;
+    if (mi < 0.1) return `${Math.max(1, Math.round(km * 3280.84))} ft`;
+    return `${mi.toFixed(mi < 10 ? 1 : 0)} mi`;
+  }
   if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(km < 10 ? 1 : 0)} km`;
 }

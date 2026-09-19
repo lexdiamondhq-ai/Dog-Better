@@ -9,7 +9,7 @@ import { useAuth } from './auth';
  * Premium entitlement, backed by RevenueCat and Apple StoreKit.
  *
  * Product rules this module enforces by design:
- * - records, emergency, the care sheet, community, and one dog are never gated;
+ * - records, emergency, the care sheet, visit meds, community, and one dog are never gated;
  * - a lapsed subscription never deletes data, it only hides the intelligence layer again;
  * - nothing here can grant Premium without a store transaction. Expo Go has no StoreKit, so
  *   `available` is false there and the paywall says so instead of pretending.

@@ -29,7 +29,7 @@ export async function photoToBase64(uri: string): Promise<string> {
 
 type Body =
   | { kind: 'look'; prompt: string; dogLine: string; allergies: string[]; imageBase64: string }
-  | { kind: 'sheet'; dogLine: string; text?: string; imageBase64?: string };
+  | { kind: 'sheet'; dogLine: string; text?: string; imageBase64?: string; fileBase64?: string; fileMime?: string; fileName?: string };
 
 export async function callAi<T>(body: Body): Promise<AiResponse<T>> {
   try {

@@ -32,7 +32,7 @@ const FAQ: { section: string; items: { q: string; a: string }[] }[] = [
   {
     section: 'Care team',
     items: [
-      { q: 'What is the care sheet?', a: 'A one-page handoff for whoever has your dog. Tap Edit on the sheet and walk through who they are, feeding, do-not list, medications and quirks, and emergency contacts. Send or copy when it is current.' },
+      { q: 'What is the care sheet?', a: 'A one-page handoff for whoever has your dog. Tap Edit on the sheet and walk through who they are, feeding, do-not list, medications and quirks, and emergency contacts. Upload a visit photo or file and we read the meds onto the calendar. That read is free. Send or copy when the sheet is current.' },
       { q: 'Can a sitter log things too?', a: 'The sheet is one direction: you to them. If a sitter or partner wants to log meals and walks, sign in together on their phone with your account.' },
     ],
   },

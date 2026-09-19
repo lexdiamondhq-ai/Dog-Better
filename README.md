@@ -41,7 +41,7 @@ Regenerate `src/lib/database.types.ts` after schema changes with `supabase gen t
 Edge Functions in `supabase/functions`:
 
 - `delete-account`: deletes the caller's storage objects, rows, and auth user. Wired to Settings, Account, Delete account.
-- `ai`: the only place the app talks to OpenAI. Holds `OPENAI_API_KEY` as a secret, enforces the free Look quota server-side, and requires Premium for visit sheet reads.
+- `ai`: the only place the app talks to OpenAI. Holds `OPENAI_API_KEY` as a secret, enforces the free Look quota server-side. Visit sheet reads are free.
 - `revenuecat-webhook`: mirrors subscription state into `profiles.premium_until` so the server can trust Premium. Authenticates with `REVENUECAT_WEBHOOK_SECRET`.
 
 Set secrets with `supabase secrets set NAME=value`. Deploy with `supabase functions deploy <name>`.

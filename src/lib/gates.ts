@@ -6,10 +6,10 @@ import { useEntitlements } from './entitlements';
 
 /**
  * The Premium gates the paywall promises, in one place so screens cannot drift from the copy.
- * Product rule: the first dog, records, emergency, the care sheet, and community are never gated.
+ * Product rule: the first dog, records, emergency, the care sheet, visit-sheet med reads, and community are never gated.
  */
 
-export type GatedFeature = 'multi_dog' | 'clinic_pack' | 'sheet_meds' | 'look' | 'learn_library';
+export type GatedFeature = 'multi_dog' | 'clinic_pack' | 'look' | 'learn_library';
 
 export function usePremiumGate() {
   const router = useRouter();

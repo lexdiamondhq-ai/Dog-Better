@@ -20,7 +20,6 @@ import { radius, space } from '@/theme/tokens';
 
 /** Every line here is enforced in code. Do not add a feature until its gate exists. */
 const FEATURES: { icon: IconName; title: string; line: string }[] = [
-  { icon: 'pill', title: 'Medication reader', line: 'A visit photo or file is read for meds, written on the profile, and scheduled with reminders.' },
   { icon: 'document', title: 'Clinic pack', line: 'Weight trend, symptom timeline, and the care sheet as a file the clinic can keep.' },
   { icon: 'careTeam', title: 'Every dog in the house', line: 'One dog is free. Premium adds unlimited profiles, each with their own records.' },
   { icon: 'camera', title: 'Forty Looks a day', line: 'Point the camera at a paw, a bag, or a label. Three a day stay free.' },
@@ -183,7 +182,7 @@ export default function Paywall() {
           <Button label={cta} size="lg" kind="accent" onPress={buy} loading={busy === 'buy'} disabled={busy !== null || !ent.loaded || !ent.available || !offer} />
           <Text variant="caption" tone="tertiary" align="center">
             {trialDays > 0 ? `Free for ${trialDays} days, then ${price} per ${per}. ` : `${price} per ${per}. `}
-            Renews automatically until cancelled at least 24 hours before the end of the period. Manage or cancel in your Apple ID settings. Records, emergency mode, the care sheet, and community stay free forever.
+            Renews automatically until cancelled at least 24 hours before the end of the period. Manage or cancel in your Apple ID settings. Records, emergency mode, the care sheet, visit meds, the treat scanner, and community stay free forever.
           </Text>
           {error ? (
             <Text variant="caption" tone="bad" align="center">
